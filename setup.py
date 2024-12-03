@@ -27,7 +27,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'testrun = dual-arm-ball-setter.testrun:main',
+            #'testrun = dual-arm-ball-setter.testrun:main',
         ],
     },
 )
