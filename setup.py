@@ -1,6 +1,13 @@
 from setuptools import find_packages, setup
+from glob import glob
 
 package_name = 'dual-arm-ball-setter'
+
+other_files = [
+    ('share/' + package_name + '/launch', glob('launch/*')),
+    ('share/' + package_name + '/rviz',   glob('rviz/*')),
+    ('share/' + package_name + '/urdf',   glob('urdf/*')),
+]
 
 setup(
     name=package_name,
@@ -10,7 +17,7 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-    ],
+    ]+other_files,
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='ubuntu',
