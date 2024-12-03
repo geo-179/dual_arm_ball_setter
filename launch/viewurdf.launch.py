@@ -20,10 +20,10 @@ def generate_launch_description():
     # LOCATE FILES
 
     # Locate the RVIZ configuration file.
-    rvizcfg = os.path.join(pkgdir('dual-arm-ball-setter'), 'rviz/viewurdf.rviz')
+    rvizcfg = os.path.join(pkgdir('dual_arm_ball_setter'), 'rviz/viewurdf.rviz')
 
     # Locate the URDF file.
-    urdf = os.path.join(pkgdir('dual-arm-ball-setter'), 'urdf/dual_panda_example.urdf')
+    urdf = os.path.join(pkgdir('dual_arm_ball_setter'), 'urdf/dual_panda_example.urdf')
 
     # Load the robot's URDF file (XML).
     with open(urdf, 'r') as file:

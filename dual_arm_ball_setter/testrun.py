@@ -22,7 +22,7 @@ class Trajectory():
     # Initialization.
     def __init__(self, node):
         # Set up the kinematic chain object.
-        self.chain = KinematicChain(node, 'base', 'panda_2_paddle_joint', self.jointnames())
+        self.chain = KinematicChain(node, 'base', 'panda_2_paddle', self.jointnames())
 
         self.q0 = np.radians(np.array([0.0, np.deg2rad(46.5675), 0.0, np.deg2rad(-93.1349), 0.0, 0.0, np.deg2rad(46.5675)]))
         self.p0 = np.array([0.0, 0.7, 0.6])
@@ -47,7 +47,7 @@ class Trajectory():
                 'panda_2_joint4',
                 'panda_2_joint5',
                 'panda_2_joint6',
-                'panda_2_joint7', 
+                'panda_2_joint7',
                 'panda_2_joint8']
 
 

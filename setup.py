@@ -1,7 +1,7 @@
 from setuptools import find_packages, setup
 from glob import glob
 
-package_name = 'dual-arm-ball-setter'
+package_name = 'dual_arm_ball_setter'
 
 other_files = [
     ('share/' + package_name + '/launch', glob('launch/*')),
@@ -27,7 +27,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'testrun = dual-arm-ball-setter.testrun:main',
+            'testrun = dual_arm_ball_setter.testrun:main',
         ],
     },
 )
