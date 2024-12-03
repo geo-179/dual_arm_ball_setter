@@ -22,7 +22,9 @@ class Trajectory():
     # Initialization.
     def __init__(self, node):
         # Set up the kinematic chain object.
-        self.chain = KinematicChain(node, 'base', 'panda_2_paddle', self.jointnames())
+        self.chain_1 = KinematicChain(node, 'base', 'panda_1_hand', self.jointnames())
+        self.chain_2 = KinematicChain(node, 'base', 'panda_2_paddle', self.jointnames())
+        
 
         self.q0 = np.radians(np.array([0.0, np.deg2rad(46.5675), 0.0, np.deg2rad(-93.1349), 0.0, 0.0, np.deg2rad(46.5675)]))
         self.p0 = np.array([0.0, 0.7, 0.6])
@@ -41,7 +43,15 @@ class Trajectory():
     # Declare the joint names.
     def jointnames(self):
         # Return a list of joint names FOR THE EXPECTED URDF!
-        return ['panda_2_joint1',
+        return ['panda_1_joint1',
+                'panda_1_joint2',
+                'panda_1_joint3',
+                'panda_1_joint4',
+                'panda_1_joint5',
+                'panda_1_joint6',
+                'panda_1_joint7',
+                'panda_1_joint8',
+                'panda_2_joint1',
                 'panda_2_joint2',
                 'panda_2_joint3',
                 'panda_2_joint4',
@@ -64,7 +74,7 @@ class Trajectory():
 
         xddot = np.concatenate((vd, wd))
         
-        (ptip, Rtip, Jv, Jw) = self.chain.fkin(self.qd)
+        (ptip, Rtip, Jv, Jw) = self.chain_2.fkin(self.qd)
         J = np.vstack((Jv, Jw))
 
         ep = pd - ptip
