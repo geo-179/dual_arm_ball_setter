@@ -13,6 +13,7 @@ from hw5code.TrajectoryUtils    import *
 
 # Grab the general fkin from HW6 P1.
 from hw6code.KinematicChain     import KinematicChain
+import random
 
 #
 #   Trajectory Class
@@ -27,10 +28,6 @@ class Trajectory():
         self.q0_1 = np.radians(np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
         self.qdot0_1 = np.radians(np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
 
-        self.pleft_1 = np.array([0.3, 0.5, 0.15])
-        self.pright_1 = np.array([-0.3, 0.5, 0.15])
-        self.Rright_1 = Reye()
-        self.Rleft_1 = Rotz(np.pi/2) @ Rotx(-np.pi/2)
 
         self.qd_1 = self.q0_1
         self.lam_1 = 20
@@ -38,24 +35,30 @@ class Trajectory():
         self.gam_1 = 0.1
 
         self.q0_2 = np.radians(np.array([0.0, np.deg2rad(46.5675), 0.0, np.deg2rad(-93.1349), 0.0, 0.0, np.deg2rad(46.5675)]))
-        self.p0_2 = np.array([0.0, 0.7, 0.6])
+        self.p0_2 = np.array([0.0, 0.0, 1.5])
         self.R0_2 = Reye()
-
-        self.pleft_2 = np.array([0.3, 0.5, 0.15])
-        self.pright_2 = np.array([-0.3, 0.5, 0.15])
-        self.Rright_2 = Reye()
-        self.Rleft_2 = Rotz(np.pi/2) @ Rotx(-np.pi/2)
+        
 
         self.qd_2 = self.q0_2
         self.lam_2 = 20
         self.lam_s_2 = 5
         self.gam_2 = 0.1
 
-        self.pball = np.array([0.0, 0.0, 3.0])
-        self.vball = np.array([0.0, 0.0, 0.0])
-        self.aball = np.array([0.0, 0.0, -9.81])
 
-        self.ball_radius = 0.05
+        # Drop ball in random location in 0.5 unit radius of base frame zero
+        (x,y) = (random.uniform(-0.5, 0.5), random.uniform(-0.2, 0.2))
+        
+
+        self.pball = np.array([x, y, 5.0])
+        self.vball = np.array([0.0, 0.0, 0.0])
+        self.aball = np.array([0.0, 0.0, -5]) # OG -9.81
+
+
+        # BALL INTERMEDIATE POS TRACKER
+        self.pball_init = np.array([x, y, 5.0])
+        self.pball_inter = np.array([0,0, 1.5])
+
+        self.paddle_radius = 0.25
 
     def jointnames(self):
         # Combine joint names from both arms.
@@ -86,11 +89,21 @@ class Trajectory():
 
     # Evaluate at the given time.  This was last called (dt) ago.
     def evaluate(self, t, dt):
+        
+        T = np.sqrt(-2*abs(self.p0_2[2] - self.pball_init[2])/self.aball[2])
 
-        # Define trajectory/path
-        pd_2 = np.array([0.0, 0, 1.5 + 0.2*np.cos(t)])
-        vd_2 = np.array([0, 0, -0.2*np.sin(t)])
-        Rd_2 = Roty(-np.pi/2)
+        if t <= T:
+            # Define trajectory/path
+            (pd_2, vd_2) = goto(t, T, self.p0_2, np.array([self.pball[0], self.pball[1], 1.5]))
+            self.pball_inter[0] = self.pball[0]
+            self.pball_inter[1] = self.pball[1]
+
+        else:
+            pd_2 = np.array([self.pball_inter[0], self.pball_inter[1], 1.5])
+            vd_2 = np.zeros(3)
+
+
+        Rd_2 = Roty(-np.pi/3)
         wd_2 = np.zeros(3)
 
         xddot_2 = np.concatenate((vd_2, wd_2))
@@ -98,13 +111,16 @@ class Trajectory():
         (ptip_2, Rtip_2, Jv_2, Jw_2) = self.chain_2.fkin(self.qd_2)
         J_2 = np.vstack((Jv_2, Jw_2))
 
+        gamma = 1
+        J_weighted_inv_2 = np.linalg.pinv(J_2.T @ J_2 + gamma**2 + np.eye(J_2.shape[1])) @ J_2.T
+
         ep_2 = pd_2 - ptip_2
         eR_2 = 0.5 * (cross(Rtip_2[0:3,0], Rd_2[0:3,0]) +
                     cross(Rtip_2[0:3,1], Rd_2[0:3,1]) +
                     cross(Rtip_2[0:3,2], Rd_2[0:3,2]))
         error_2 = np.concatenate((ep_2, eR_2))
 
-        qddot_2 = np.linalg.pinv(J_2) @ (xddot_2 + self.lam_2*error_2)
+        qddot_2 = J_weighted_inv_2 @ (xddot_2 + self.lam_2*error_2)
         qd_2 = self.qd_2 + dt*qddot_2
 
         self.qd_2 = qd_2
@@ -116,11 +132,13 @@ class Trajectory():
         self.vball += dt * self.aball
         self.pball += dt * self.vball
 
-        # Check for a bounce - not the change in x velocity is non-physical.
-        if self.pball[2] < pd_2[2]:
-            self.vball[2] *= -1.0
-
-        print("BALL POSITION:", self.pball[2])
+        # Determine if the ball is within the boundary of the paddle
+        r = self.pball - ptip_2
+        n = Rtip_2[0:3,0] / np.linalg.norm(Rtip_2[0:3,0])
+        if n @ r < 1e-2 and np.linalg.norm(r) <= self.paddle_radius:
+            v_normal = np.dot(self.vball, n) * n
+            v_plane = self.vball - v_normal
+            self.vball = (v_plane - v_normal)
 
         return (qd, qddot, self.pball)
 
