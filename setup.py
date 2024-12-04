@@ -29,7 +29,6 @@ setup(
         'console_scripts': [
             'testrun_1 = dual_arm_ball_setter.testrun_1:main',
             'testrun_2 = dual_arm_ball_setter.testrun_2:main',
-            'test_boundary = dual_arm_ball_setter.test_boundary:main',
         ],
     },
 )
