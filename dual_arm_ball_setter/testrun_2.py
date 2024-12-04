@@ -13,6 +13,7 @@ from hw5code.TrajectoryUtils    import *
 
 # Grab the general fkin from HW6 P1.
 from hw6code.KinematicChain     import KinematicChain
+import random
 
 #
 #   Trajectory Class
@@ -27,10 +28,6 @@ class Trajectory():
         self.q0_1 = np.radians(np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
         self.qdot0_1 = np.radians(np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
 
-        self.pleft_1 = np.array([0.3, 0.5, 0.15])
-        self.pright_1 = np.array([-0.3, 0.5, 0.15])
-        self.Rright_1 = Reye()
-        self.Rleft_1 = Rotz(np.pi/2) @ Rotx(-np.pi/2)
 
         self.qd_1 = self.q0_1
         self.lam_1 = 20
@@ -38,23 +35,22 @@ class Trajectory():
         self.gam_1 = 0.1
 
         self.q0_2 = np.radians(np.array([0.0, np.deg2rad(46.5675), 0.0, np.deg2rad(-93.1349), 0.0, 0.0, np.deg2rad(46.5675)]))
-        self.p0_2 = np.array([0.0, 0.7, 0.6])
+        self.p0_2 = np.array([0.25, 0.0, 1.5])
         self.R0_2 = Reye()
-
-        self.pleft_2 = np.array([0.3, 0.5, 0.15])
-        self.pright_2 = np.array([-0.3, 0.5, 0.15])
-        self.Rright_2 = Reye()
-        self.Rleft_2 = Rotz(np.pi/2) @ Rotx(-np.pi/2)
+        
 
         self.qd_2 = self.q0_2
         self.lam_2 = 20
         self.lam_s_2 = 5
         self.gam_2 = 0.1
+        
+        (x,y) = (random.uniform(-0.25, 0.25), random.uniform(-0.25, 0.25))
 
-        self.pball = np.array([0.0, 0.0, 3.0])
+        self.pball = np.array([x, y, 3.0])
         self.vball = np.array([0.0, 0.0, 0.0])
         self.aball = np.array([0.0, 0.0, -9.81])
 
+        self.ball_radius = 0.05
 
     def jointnames(self):
         # Combine joint names from both arms.
@@ -85,13 +81,10 @@ class Trajectory():
 
     # Evaluate at the given time.  This was last called (dt) ago.
     def evaluate(self, t, dt):
-        if t > 14: 
-            return None
-
-        
+    
         # Define trajectory/path
-        pd_2 = np.array([0.15, 0, 1.5 + 0.2*np.cos(t)])
-        vd_2 = np.array([0, 0, -0.2*np.sin(t)])
+        (pd_2, vd_2) = goto(t, 1, self.p0_2, np.array([self.pball[0], self.pball[1], 1.5]))
+    
         Rd_2 = Roty(-np.pi/2)
         wd_2 = np.zeros(3)
 
