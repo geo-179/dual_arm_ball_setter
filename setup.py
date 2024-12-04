@@ -29,6 +29,7 @@ setup(
         'console_scripts': [
             'testrun_1 = dual_arm_ball_setter.testrun_1:main',
             'testrun_2 = dual_arm_ball_setter.testrun_2:main',
+            'testrun_tk = dual_arm_ball_setter.testrun_tk:main',
         ],
     },
 )
