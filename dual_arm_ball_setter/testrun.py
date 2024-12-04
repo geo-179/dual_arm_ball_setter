@@ -58,8 +58,7 @@ class Trajectory():
 
     def jointnames(self):
         # Combine joint names from both arms.
-        return self.jointnames_1() + self.jointnames_2() 
-                                   + ['panda_1_finger_joint1',
+        return self.jointnames_1() + self.jointnames_2() + ['panda_1_finger_joint1',
                                       'panda_1_finger_joint2', 
                                       'panda_2_finger_joint1',
                                       'panda_2_finger_joint2']
