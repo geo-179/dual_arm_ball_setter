@@ -110,7 +110,7 @@ class Trajectory():
         self.vball += dt * self.aball
         self.pball += dt * self.vball
 
-        # Determine if the ball is within the boundary of the paddle
+        # Determine if the ball is in collision with the paddle
         r = self.pball - ptip_2
         n = Rtip_2[0:3,0] / np.linalg.norm(Rtip_2[0:3,0])
         if n @ r < 1e-2 and np.linalg.norm(r) <= self.paddle_radius:
