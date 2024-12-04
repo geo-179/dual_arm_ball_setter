@@ -50,8 +50,14 @@ from geometry_msgs.msg  import PoseStamped, TwistStamped
 from geometry_msgs.msg  import TransformStamped
 from sensor_msgs.msg    import JointState
 
-from hw3code.TransformHelpers   import quat_from_R
+from hw3code.TransformHelpers   import quat_from_R, Point_from_p
 
+from rclpy.qos                  import QoSProfile, DurabilityPolicy
+from rclpy.time                 import Duration
+from geometry_msgs.msg          import Point, Vector3, Quaternion
+from std_msgs.msg               import ColorRGBA
+from visualization_msgs.msg     import Marker
+from visualization_msgs.msg     import MarkerArray
 
 #
 #   Trajectory Generator Node Class
@@ -78,6 +84,28 @@ class GeneratorNode(Node):
         self.pubjoint = self.create_publisher(JointState, '/joint_states', 10)
         self.pubpose  = self.create_publisher(PoseStamped, '/pose', 10)
         self.pubtwist = self.create_publisher(TwistStamped, '/twist', 10)
+
+        # Add a publisher to send ball marker position
+        quality = QoSProfile(durability=DurabilityPolicy.TRANSIENT_LOCAL, depth=1)
+        self.pubball = self.create_publisher(MarkerArray, '/visualization_marker_array', quality)
+
+        # Create the sphere marker.
+        self.radius = 0.1
+        diam        = 2 * self.radius
+        self.marker = Marker()
+        self.marker.header.frame_id  = "world"
+        self.marker.header.stamp     = self.get_clock().now().to_msg()
+        self.marker.action           = Marker.ADD
+        self.marker.ns               = "point"
+        self.marker.id               = 1
+        self.marker.type             = Marker.SPHERE
+        self.marker.pose.orientation = Quaternion()
+        self.marker.scale            = Vector3(x = diam, y = diam, z = diam)
+        self.marker.color            = ColorRGBA(r=1.0, g=0.0, b=0.0, a=0.8)
+        # a = 0.8 is slightly transparent!
+
+        # Create the marker array message.
+        self.markerarray = MarkerArray(markers = [self.marker])
 
         # Initialize a regular and static transform broadcaster
         self.tfbroadcaster = tf2_ros.TransformBroadcaster(self)
@@ -135,43 +163,26 @@ class GeneratorNode(Node):
             self.future.set_result("Trajectory has ended")
             return
 
-        # Extract the appropriate information.
-        if   len(des) == 2:
-            (q,qdot,p,v,R,w) = (des[0],des[1],None,None,None,None)
-        elif len(des) == 4:
-            (q,qdot,p,v,R,w) = (des[0],des[1],des[2],des[3],None,None)
-        elif len(des) == 6:
-            (q,qdot,p,v,R,w) = des
-        else:
-            raise ValueError("The trajectory must return 2, 4, 6 elements")
+        (q, qdot, pball) = des
+
 
         # Check the joint results.
-        if q    is None:    q    = [nan] * len(self.jointnames)
-        if qdot is None:    qdot = [nan] * len(self.jointnames)
-        if p    is None:    p    = [0.0, 0.0, 0.0]
-        if v    is None:    v    = [0.0, 0.0, 0.0]
-        if w    is None:    w    = [0.0, 0.0, 0.0]
-
-        if R    is None:    quat  = [0.0, 0.0, 0.0, 1.0]
-        else:               quat  = quat_from_R(R)
+        if q     is None:    q     = [nan] * len(self.jointnames)
+        if qdot  is None:    qdot  = [nan] * len(self.jointnames)
+        if pball is None:    pball = [0.0, 0.0, 0.0]
 
         # Turn into lists.
-        if type(q).__module__    == np.__name__: q    = q.flatten().tolist()
-        if type(qdot).__module__ == np.__name__: qdot = qdot.flatten().tolist()
-        if type(p).__module__    == np.__name__: p    = p.flatten().tolist()
-        if type(v).__module__    == np.__name__: v    = v.flatten().tolist()
-        if type(w).__module__    == np.__name__: w    = w.flatten().tolist()
+        if type(q).__module__     == np.__name__: q        = q.flatten().tolist()
+        if type(qdot).__module__  == np.__name__: qdot     = qdot.flatten().tolist()
+        if type(pball).__module__ == np.__name__: pball    = pball.flatten().tolist()
 
         # Verify the sizes.
-        if not (len(q) == len(self.jointnames) and
-                len(qdot) == len(self.jointnames)):
+        if not (len(q) == len(self.jointnames) and len(qdot) == len(self.jointnames)):
             print(q)
             print(qdot)
             raise ValueError("(q) and (qdot) must be same len as jointnames!")
-        if not (len(p) == 3 and len(v) == 3):
-            raise ValueError("(p) and (v) must be length 3!")
-        if not (len(w) == 3):
-            raise ValueError("(omega) must be length 3!")
+        if not (len(pball) == 3):
+            raise ValueError("(pball) must be length 3!")
 
         # Determine the corresponding ROS time (seconds since 1970).
         now = self.start + rclpy.time.Duration(seconds=self.t)
@@ -184,39 +195,7 @@ class GeneratorNode(Node):
         msg.velocity     = qdot                 # List of joint velocities
         self.pubjoint.publish(msg)
 
-        # Build up a pose message and publish.
-        msg = PoseStamped()
-        msg.header.stamp       = now.to_msg()   # Current time for ROS
-        msg.pose.position.x    = p[0]
-        msg.pose.position.y    = p[1]
-        msg.pose.position.z    = p[2]
-        msg.pose.orientation.x = quat[0]
-        msg.pose.orientation.y = quat[1]
-        msg.pose.orientation.z = quat[2]
-        msg.pose.orientation.w = quat[3]
-        self.pubpose.publish(msg)
-
-        # Build up a twist message and publish.
-        msg = TwistStamped()
-        msg.header.stamp    = now.to_msg()      # Current time for ROS
-        msg.twist.linear.x  = v[0]
-        msg.twist.linear.y  = v[1]
-        msg.twist.linear.z  = v[2]
-        msg.twist.angular.x = w[0]
-        msg.twist.angular.y = w[1]
-        msg.twist.angular.z = w[2]
-        self.pubtwist.publish(msg)
-
-        # Prepare a transform message and broadcast.
-        msg = TransformStamped()
-        msg.header.stamp            = now.to_msg()
-        msg.header.frame_id         = 'world'
-        msg.child_frame_id          = 'desired'
-        msg.transform.translation.x = p[0]
-        msg.transform.translation.y = p[1]
-        msg.transform.translation.z = p[2]
-        msg.transform.rotation.x    = quat[0]
-        msg.transform.rotation.y    = quat[1]
-        msg.transform.rotation.z    = quat[2]
-        msg.transform.rotation.w    = quat[3]
-        self.tfbroadcaster.sendTransform(msg)
+        # Build up marker message and publish
+        self.marker.header.stamp  = self.get_clock().now().to_msg()
+        self.marker.pose.position = Point_from_p(pball)
+        self.pubball.publish(self.markerarray)

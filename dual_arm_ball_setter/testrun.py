@@ -14,14 +14,6 @@ from hw5code.TrajectoryUtils    import *
 # Grab the general fkin from HW6 P1.
 from hw6code.KinematicChain     import KinematicChain
 
-from rclpy.node                 import Node
-from rclpy.qos                  import QoSProfile, DurabilityPolicy
-from rclpy.time                 import Duration
-from geometry_msgs.msg          import Point, Vector3, Quaternion
-from std_msgs.msg               import ColorRGBA
-from visualization_msgs.msg     import Marker
-from visualization_msgs.msg     import MarkerArray
-
 #
 #   Trajectory Class
 #
@@ -59,36 +51,9 @@ class Trajectory():
         self.lam_s_2 = 5
         self.gam_2 = 0.1
 
-        ###############MARKER INIT###################3333
-        quality = QoSProfile(
-            durability=DurabilityPolicy.TRANSIENT_LOCAL, depth=1)
-        self.pub = self.node.create_publisher(
-            MarkerArray, '/visualization_marker_array', quality)
-        
-        self.radius = 0.1
-
-        self.p = np.array([0.0, 0.0, 3.0])
-        self.v = np.array([0.0, 0.0, 0.0])
-        self.a = np.array([0.0, 0.0, -9.81])
-        
-        # Create the sphere marker.
-        diam        = 2 * self.radius
-        self.marker = Marker()
-        self.marker.header.frame_id  = "base"
-        self.marker.header.stamp     = self.node.get_clock().now().to_msg()
-        self.marker.action           = Marker.ADD
-        self.marker.ns               = "point"
-        self.marker.id               = 1
-        self.marker.type             = Marker.SPHERE
-        self.marker.pose.orientation = Quaternion()
-        self.marker.pose.position    = Point_from_p(self.p)
-        self.marker.scale            = Vector3(x = diam, y = diam, z = diam)
-        self.marker.color            = ColorRGBA(r=1.0, g=0.0, b=0.0, a=0.8)
-        # a = 0.8 is slightly transparent!
-
-        # Create the marker array message.
-        self.markerarray = MarkerArray(markers = [self.marker])
-
+        self.pball = np.array([0.0, 0.0, 3.0])
+        self.vball = np.array([0.0, 0.0, 0.0])
+        self.aball = np.array([0.0, 0.0, -9.81])
 
 
     def jointnames(self):
@@ -149,25 +114,21 @@ class Trajectory():
         qd = np.concatenate((self.q0_1, qd_2, [0.0, 0.0, 0.0, 0.0]))
         qddot = np.concatenate((self.qdot0_1, qddot_2, [0.0, 0.0, 0.0, 0.0]))
         
-        self.v += dt * self.a
-        self.p += dt * self.v
+        self.vball += dt * self.aball
+        self.pball += dt * self.vball
 
         # Check for a bounce - not the change in x velocity is non-physical.
-        if self.p[2] < pd_2[2]:
-            self.v[2] *= -1.0
+        if self.pball[2] < pd_2[2]:
+            self.vball[2] *= -1.0
 
         # Update the ID number to create a new ball and leave the
         # previous balls where they are.
         #####################
         # self.marker.id += 1
         #####################
-        print("BALL POSITION:", self.p[2])
-        # Update the message and publish.
-        self.marker.header.stamp  = self.node.get_clock().now().to_msg()
-        self.marker.pose.position = Point_from_p(self.p)
-        self.node.pub.publish(self.markerarray)
+        print("BALL POSITION:", self.pball[2])
 
-        return (qd, qddot)
+        return (qd, qddot, self.pball)
 
 
 #
