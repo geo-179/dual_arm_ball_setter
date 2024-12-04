@@ -58,15 +58,17 @@ class Trajectory():
 
     def jointnames(self):
         # Combine joint names from both arms.
-        return self.jointnames_1() + self.jointnames_2() + ['panda_1_finger_joint1',
-                'panda_1_finger_joint2', 'panda_2_finger_joint1',
-                'panda_2_finger_joint2']
+        return self.jointnames_1() + self.jointnames_2() 
+                                   + ['panda_1_finger_joint1',
+                                      'panda_1_finger_joint2', 
+                                      'panda_2_finger_joint1',
+                                      'panda_2_finger_joint2']
 
     # Declare the joint names for the first arm.
     def jointnames_1(self):
         return ['panda_1_joint1',
                 'panda_1_joint2',
-                'panda_1_joint3',
+                'panda_1_joint3', 
                 'panda_1_joint4',
                 'panda_1_joint5',
                 'panda_1_joint6',
@@ -89,8 +91,8 @@ class Trajectory():
 
         
         # Define trajectory/path
-        pd_2 = np.array([0, 0, 1.5])
-        vd_2 = np.array([0, 0.25*np.sin(t), 0.25*np.cos(t)])
+        pd_2 = np.array([0.15, 0, 1.5 + 0.2*np.cos(t)])
+        vd_2 = np.array([0, 0, -0.2*np.sin(t)])
         Rd_2 = Roty(-np.pi/2)
         wd_2 = np.zeros(3)
 
@@ -121,11 +123,6 @@ class Trajectory():
         if self.pball[2] < pd_2[2]:
             self.vball[2] *= -1.0
 
-        # Update the ID number to create a new ball and leave the
-        # previous balls where they are.
-        #####################
-        # self.marker.id += 1
-        #####################
         print("BALL POSITION:", self.pball[2])
 
         return (qd, qddot, self.pball)

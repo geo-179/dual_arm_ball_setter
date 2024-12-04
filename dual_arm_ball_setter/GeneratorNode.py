@@ -90,10 +90,10 @@ class GeneratorNode(Node):
         self.pubball = self.create_publisher(MarkerArray, '/visualization_marker_array', quality)
 
         # Create the sphere marker.
-        self.radius = 0.1
+        self.radius = 0.05
         diam        = 2 * self.radius
         self.marker = Marker()
-        self.marker.header.frame_id  = "world"
+        self.marker.header.frame_id  = "base"
         self.marker.header.stamp     = self.get_clock().now().to_msg()
         self.marker.action           = Marker.ADD
         self.marker.ns               = "point"
@@ -101,8 +101,7 @@ class GeneratorNode(Node):
         self.marker.type             = Marker.SPHERE
         self.marker.pose.orientation = Quaternion()
         self.marker.scale            = Vector3(x = diam, y = diam, z = diam)
-        self.marker.color            = ColorRGBA(r=1.0, g=0.0, b=0.0, a=0.8)
-        # a = 0.8 is slightly transparent!
+        self.marker.color            = ColorRGBA(r=1.0, g=0.0, b=0.0, a=1.0)
 
         # Create the marker array message.
         self.markerarray = MarkerArray(markers = [self.marker])
