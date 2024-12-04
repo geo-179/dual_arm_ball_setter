@@ -23,7 +23,7 @@ class Trajectory():
     def __init__(self, node):
         # Set up the kinematic chain object.
         self.chain_1 = KinematicChain(node, 'base', 'panda_1_hand', self.jointnames_1())
-        self.chain_2 = KinematicChain(node, 'base', 'panda_2_hand', self.jointnames_2())
+        self.chain_2 = KinematicChain(node, 'base', 'panda_2_paddle', self.jointnames_2())
 
         self.q0_1 = np.radians(np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
         self.qdot0_1 = np.radians(np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
@@ -35,7 +35,7 @@ class Trajectory():
         self.gam_1 = 0.1
 
         self.q0_2 = np.radians(np.array([0.0, np.deg2rad(46.5675), 0.0, np.deg2rad(-93.1349), 0.0, 0.0, np.deg2rad(46.5675)]))
-        self.p0_2 = np.array([0.25, 0.0, 1.5])
+        self.p0_2 = np.array([0.0, 0.0, 1.5])
         self.R0_2 = Reye()
         
 
@@ -44,9 +44,10 @@ class Trajectory():
         self.lam_s_2 = 5
         self.gam_2 = 0.1
         
-        (x,y) = (random.uniform(-0.25, 0.25), random.uniform(-0.25, 0.25))
+        (x,y) = (random.uniform(-0.15, 0.15), random.uniform(-0.15, 0.15))
+        
 
-        self.pball = np.array([x, y, 3.0])
+        self.pball = np.array([x, y, 5.0])
         self.vball = np.array([0.0, 0.0, 0.0])
         self.aball = np.array([0.0, 0.0, -9.81])
 
@@ -81,9 +82,15 @@ class Trajectory():
 
     # Evaluate at the given time.  This was last called (dt) ago.
     def evaluate(self, t, dt):
-    
-        # Define trajectory/path
-        (pd_2, vd_2) = goto(t, 1, self.p0_2, np.array([self.pball[0], self.pball[1], 1.5]))
+
+        T = np.sqrt(-2*abs(self.p0_2[2] - self.pball[2])/self.aball[2])
+
+        if t <= T:
+            # Define trajectory/path
+            (pd_2, vd_2) = goto(t, T, self.p0_2, np.array([self.pball[0], self.pball[1], 1.5]))
+        else:
+            pd_2 = np.array([self.pball[0], self.pball[1], 1.5])
+            vd_2 = np.zeros(3)
     
         Rd_2 = Roty(-np.pi/2)
         wd_2 = np.zeros(3)

@@ -22,7 +22,7 @@ class Trajectory():
     def __init__(self, node):
         # Set up the kinematic chain object.
         self.chain_1 = KinematicChain(node, 'base', 'panda_1_hand', self.jointnames_1())
-        self.chain_2 = KinematicChain(node, 'base', 'panda_2_hand', self.jointnames_2())
+        self.chain_2 = KinematicChain(node, 'base', 'panda_2_paddle', self.jointnames_2())
 
         self.q0_1 = np.radians(np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
         self.qdot0_1 = np.radians(np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
@@ -88,7 +88,7 @@ class Trajectory():
     def evaluate(self, t, dt):
 
         # Define trajectory/path
-        pd_2 = np.array([0.25, 0, 1.5 + 0.2*np.cos(t)])
+        pd_2 = np.array([0.0, 0, 1.5 + 0.2*np.cos(t)])
         vd_2 = np.array([0, 0, -0.2*np.sin(t)])
         Rd_2 = Roty(-np.pi/2)
         wd_2 = np.zeros(3)
