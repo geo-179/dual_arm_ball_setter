@@ -45,11 +45,11 @@ class Trajectory():
         self.gam_2 = 0.1
         
         # Drop ball in random location in 0.5 unit radius of base frame zero
-        (x,y) = (random.uniform(-0.5, 0.5), random.uniform(-0.5, 0.5))
+        (x,y) = (random.uniform(-0.05, 0.05), random.uniform(-0.05, 0.05))
 
         self.pball = np.array([x, y, 5.0])
         self.vball = np.array([0.0, 0.0, 0.0])
-        self.aball = np.array([0.0, 0.0, -9.81])
+        self.aball = np.array([0.0, 0.0, -0.50])
 
         self.paddle_radius = 0.25
 
@@ -114,7 +114,9 @@ class Trajectory():
         r = self.pball - ptip_2
         n = Rtip_2[0:3,0] / np.linalg.norm(Rtip_2[0:3,0])
         if n @ r < 1e-2 and np.linalg.norm(r) <= self.paddle_radius:
-            self.vball[2] *= -1.0
+            v_normal = np.dot(self.vball, n) * n
+            v_plane = self.vball - v_normal
+            self.vball = (v_plane - v_normal)
 
         return (qd, qddot, self.pball)
 
