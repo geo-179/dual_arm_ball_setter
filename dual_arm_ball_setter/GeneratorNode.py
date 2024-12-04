@@ -91,6 +91,7 @@ class GeneratorNode(Node):
 
         # Create the sphere marker.
         self.radius = 0.05
+        
         diam        = 2 * self.radius
         self.marker = Marker()
         self.marker.header.frame_id  = "base"
