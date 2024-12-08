@@ -24,35 +24,27 @@ class Trajectory():
         # Set up the kinematic chain object.
         self.chain_1 = KinematicChain(node, 'base', 'panda_1_hand', self.jointnames_1())
         self.chain_2 = KinematicChain(node, 'base', 'panda_2_paddle', self.jointnames_2())
+        self.chain_to_hand_2 = KinematicChain(node, 'base', 'panda_2_hand', self.jointnames_2())
 
         self.q0_1 = np.radians(np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
         self.qdot0_1 = np.radians(np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
 
-
         self.qd_1 = self.q0_1
-        self.lam_1 = 20
-        self.lam_s_1 = 5
-        self.gam_1 = 0.1
+        self.lam = 20
+        self.gam = 0.1
 
         self.q0_2 = np.radians(np.array([0.0, np.deg2rad(46.5675), 0.0, np.deg2rad(-93.1349), 0.0, 0.0, np.deg2rad(46.5675)]))
         self.p0_2 = np.array([0.0, 0.0, 1.5])
         self.R0_2 = Reye()
         
-
         self.qd_2 = self.q0_2
-        self.lam_2 = 20
-        self.lam_s_2 = 5
-        self.gam_2 = 0.1
-
-
-        # Drop ball in random location in 0.5 unit radius of base frame zero
-        (x,y) = (random.uniform(-0.5, 0.5), random.uniform(-0.2, 0.2))
         
+        # Drop ball in random location in 0.1 unit radius of base frame zero
+        (x,y) = (random.uniform(-0.1, 0.1), random.uniform(-0.1, 0.1))
 
         self.pball = np.array([x, y, 5.0])
         self.vball = np.array([0.0, 0.0, 0.0])
-        self.aball = np.array([0.0, 0.0, -5]) # OG -9.81
-
+        self.aball = np.array([0.0, 0.0, -1.0])
 
         # BALL INTERMEDIATE POS TRACKER
         self.pball_init = np.array([x, y, 5.0])
@@ -89,58 +81,69 @@ class Trajectory():
 
     # Evaluate at the given time.  This was last called (dt) ago.
     def evaluate(self, t, dt):
-        
         T = np.sqrt(-2*abs(self.p0_2[2] - self.pball_init[2])/self.aball[2])
 
         if t <= T:
-            # Define trajectory/path
-            (pd_2, vd_2) = goto(t, T, self.p0_2, np.array([self.pball[0], self.pball[1], 1.5]))
+            (pd_2, vd_2) = goto(t, T, self.p0_2, np.array([self.pball[0], self.pball[1], self.p0_2[2]]))
             self.pball_inter[0] = self.pball[0]
             self.pball_inter[1] = self.pball[1]
 
         else:
-            pd_2 = np.array([self.pball_inter[0], self.pball_inter[1], 1.5])
+            pd_2 = np.array([self.pball_inter[0], self.pball_inter[1], self.p0_2[2]])
             vd_2 = np.zeros(3)
 
-
+        #### Chain 2 kinematics ###
         Rd_2 = Roty(-np.pi/3)
         wd_2 = np.zeros(3)
 
-        xddot_2 = np.concatenate((vd_2, wd_2))
-        
-        (ptip_2, Rtip_2, Jv_2, Jw_2) = self.chain_2.fkin(self.qd_2)
-        J_2 = np.vstack((Jv_2, Jw_2))
-
-        gamma = 1
-        J_weighted_inv_2 = np.linalg.pinv(J_2.T @ J_2 + gamma**2 + np.eye(J_2.shape[1])) @ J_2.T
-
-        ep_2 = pd_2 - ptip_2
-        eR_2 = 0.5 * (cross(Rtip_2[0:3,0], Rd_2[0:3,0]) +
-                    cross(Rtip_2[0:3,1], Rd_2[0:3,1]) +
-                    cross(Rtip_2[0:3,2], Rd_2[0:3,2]))
-        error_2 = np.concatenate((ep_2, eR_2))
-
-        qddot_2 = J_weighted_inv_2 @ (xddot_2 + self.lam_2*error_2)
-        qd_2 = self.qd_2 + dt*qddot_2
-
+        (qd_2, qddot_2, ptip_2, Rtip_2) = self.ikin(self.chain_2, dt, self.qd_2, pd_2, vd_2, Rd_2, wd_2)    
         self.qd_2 = qd_2
 
+        #### Chain 1 kinematics ###
+        (phand_2, _, _, _) = self.chain_to_hand_2.fkin(self.qd_2)
+        hand_2_to_hand_1 = ptip_2 - phand_2
+
+        pd_1 = ptip_2 + hand_2_to_hand_1
+        vd_1 = vd_2
+        Rd_1 = np.array([Rd_2[:, 0], -Rd_2[:, 1], -Rd_2[:, 2]])
+        wd_1 = np.zeros(3)
+
+        (qd_1, qddot_1, _, _) = self.ikin(self.chain_1, dt, self.qd_1, pd_1, vd_1, Rd_1, wd_1)
+        self.qd_1 = qd_1
+
         # Return the desired joint and task (position/orientation) pos/vel.
-        qd = np.concatenate((self.q0_1, qd_2, [0.0, 0.0, 0.0, 0.0]))
-        qddot = np.concatenate((self.qdot0_1, qddot_2, [0.0, 0.0, 0.0, 0.0]))
+        qd = np.concatenate((qd_1, qd_2, np.zeros(4)))
+        qddot = np.concatenate((qddot_1, qddot_2, np.zeros(4)))
         
         self.vball += dt * self.aball
         self.pball += dt * self.vball
 
-        # Determine if the ball is within the boundary of the paddle
+        # Determine if the ball is in collision with the paddle
         r = self.pball - ptip_2
         n = Rtip_2[0:3,0] / np.linalg.norm(Rtip_2[0:3,0])
         if n @ r < 1e-2 and np.linalg.norm(r) <= self.paddle_radius:
-            v_normal = np.dot(self.vball, n) * n
+            v_normal = (self.vball @ n) * n
             v_plane = self.vball - v_normal
-            self.vball = (v_plane - v_normal)
+            self.vball = v_plane - v_normal
 
         return (qd, qddot, self.pball)
+
+
+    def ikin(self, chain, dt, qd_last, pd, vd, Rd, wd):
+        xddot = np.concatenate((vd, wd))
+        
+        (ptip, Rtip, Jv, Jw) = chain.fkin(qd_last)
+
+        J = np.vstack((Jv, Jw))
+
+        ep_ = ep(pd, ptip)
+        eR_ = eR(Rd, Rtip)
+        error = np.concatenate((ep_, eR_))
+
+        qddot = np.linalg.pinv(J.T @ J + self.gam**2 * np.eye(7)) @ J.T @ (xddot + self.lam*error)
+        qd = qd_last + dt*qddot
+
+        return (qd, qddot, ptip, Rtip)
 
 
 #
@@ -152,7 +155,7 @@ def main(args=None):
 
     # Initialize the generator node for 100Hz udpates, using the above
     # Trajectory class.
-    generator = GeneratorNode('dual_arm_generator', 100, Trajectory)
+    generator = GeneratorNode('dual_arm_generator', 500, Trajectory)
 
     # Spin, meaning keep running (taking care of the timer callbacks
     # and message passing), until interrupted or the trajectory ends.

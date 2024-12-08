@@ -48,7 +48,7 @@ class Trajectory():
 
         self.pball = np.array([x, y, 5.0])
         self.vball = np.array([0.0, 0.0, 0.0])
-        self.aball = np.array([0.0, 0.0, -0.50])
+        self.aball = np.array([0.0, 0.0, -9.81]) # Gravity -9.81
 
         self.paddle_radius = 0.25
 
