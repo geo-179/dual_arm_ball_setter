@@ -53,7 +53,7 @@ def generate_launch_description():
     node_trajectory = Node(
         name       = 'trajectory', 
         package    = 'dual_arm_ball_setter',
-        executable = 'testrun_2',
+        executable = 'testrun_tk',
         output     = 'screen')
 
     ######################################################################

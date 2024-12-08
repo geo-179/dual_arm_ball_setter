@@ -86,25 +86,26 @@ class Trajectory():
             (pd_2, vd_2) = goto(t, T, self.p0_2, np.array([self.pball[0], self.pball[1], self.p0_2[2]]))
             self.pball_inter[0] = self.pball[0]
             self.pball_inter[1] = self.pball[1]
+            (a, a_prime) = goto(t, T, 0.0, np.pi / 4)
+            nd_2 = Rotx(a) @ np.array([0.0, 0.0, 1.0])
+            wd_2 = a_prime * np.array([1.0, 0.0, 0.0])
         else:
             pd_2 = np.array([self.pball_inter[0], self.pball_inter[1], self.p0_2[2]])
             vd_2 = np.zeros(3)
+            nd_2 = Rotx(np.pi / 3) @ np.array([0.0, 0.0, 1.0])
+            wd_2 = np.zeros(3)
 
-        #### Chain 2 kinematics ###
-        nd_2 = np.array([0, 0, 1])
-        wd_2 = np.zeros(3)
-
-        (qd_2, qddot_2, ptip_2, Rtip_2, n) = self.ikin2(self.chain_2, dt, self.qd_2, pd_2, vd_2, nd_2, wd_2)    
+        (qd_2, qddot_2, ptip_2, Rtip_2, n) = self.ikin2(self.chain_2, dt, self.qd_2, pd_2, vd_2, nd_2, wd_2)
         self.qd_2 = qd_2
 
         #### Chain 1 kinematics ###
         (phand_2, _, _, _) = self.chain_to_hand_2.fkin(self.qd_2)
-        hand_2_to_hand_1 = ptip_2 - phand_2
+        hand_2_to_center = ptip_2 - phand_2
 
-        pd_1 = ptip_2 + hand_2_to_hand_1
+        pd_1 = ptip_2 + hand_2_to_center
         vd_1 = vd_2
         Rd_1 = np.array([Rtip_2[:, 0], -Rtip_2[:, 1], -Rtip_2[:, 2]])
-        wd_1 = np.zeros(3)
+        wd_1 = -wd_2
 
         (qd_1, qddot_1, _, _) = self.ikin1(self.chain_1, dt, self.qd_1, pd_1, vd_1, Rd_1, wd_1)
         self.qd_1 = qd_1
@@ -148,22 +149,40 @@ class Trajectory():
 
         # Create partial orientation jacobian, excluding orientation about axis normal to paddle (x-axis of tip frame)
         A = np.array([[0, 1, 0], [0, 0, 1]])
+        # Jw = np.vstack((np.zeros((1, Jw.shape[1])), A @ Rtip.T @ Jw))
         J = np.vstack((Jv, A @ Rtip.T @ Jw))
 
         # Similarly, modify wd to keep the equation wd = Jw*qdot consistent
-        xddot = np.concatenate((vd, A @ Rtip.T @ wd))
+        # wd = np.concatenate(([0], A @ Rtip.T @ wd))
 
         # Get unit normal vector to paddle surface (x-basis vector)
         n = Rtip[:,0]
 
         ep_ = ep(pd, ptip)
         en = np.cross(n, nd)
-        error = np.concatenate((ep_, en))
+        # error = np.concatenate((ep_, en))
 
         damping = self.gam**2 * np.eye(7)
-        qddot = np.linalg.pinv(J.T @ J + damping) @ J.T @ (xddot + self.lam * error)
+        wr = (wd + self.lam * en)
+
+        xrdot = np.concatenate((vd + self.lam * ep_, A @ Rtip @ wr))
+        print('J.T @ J', (J.T @ J).shape)
+        print('damping', damping.shape)
+        print('J.T @ xrdot', (J.T @ xrdot).shape)
+        print('np.linalg.pinv(J.T @ J + damping) @ J.T ', (np.linalg.pinv(J.T @ J + damping) @ J.T ).shape)
+        print('xrdot', (xrdot.shape))
+        qddot = np.linalg.pinv(J.T @ J + damping) @ J.T @ xrdot
+        print('qddot', qddot.shape)
 
         qd = qd_last + dt*qddot
+
+        print('qd_last', qd_last.shape)
+        print('qd', qd.shape)
+
+        print('---------------------------------------------')
+        print(qd)
+        print('---------------------------------------------')
+
 
         return (qd, qddot, ptip, Rtip, n)
 
