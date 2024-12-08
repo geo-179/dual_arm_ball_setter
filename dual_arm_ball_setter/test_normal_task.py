@@ -106,7 +106,7 @@ class Trajectory():
         Rd_1 = np.array([Rtip_2[:, 0], -Rtip_2[:, 1], -Rtip_2[:, 2]])
         wd_1 = np.zeros(3)
 
-        (qd_1, qddot_1) = self.ikin1(self.chain_1, dt, self.qd_1, pd_1, vd_1, Rd_1, wd_1)
+        (qd_1, qddot_1, _, _) = self.ikin1(self.chain_1, dt, self.qd_1, pd_1, vd_1, Rd_1, wd_1)
         self.qd_1 = qd_1
 
         # Return the desired joint and task (position/orientation) pos/vel.
@@ -137,7 +137,7 @@ class Trajectory():
         eR_ = eR(Rd, Rtip)
         error = np.concatenate((ep_, eR_))
 
-        qddot = np.linalg.pinv(J.T @ J + self.gam**2 * np.eye(6)) @ J.T @ (xddot + self.lam*error)
+        qddot = np.linalg.pinv(J.T @ J + self.gam**2 * np.eye(7)) @ J.T @ (xddot + self.lam*error)
         qd = qd_last + dt*qddot
 
         return (qd, qddot, ptip, Rtip)
@@ -148,12 +148,10 @@ class Trajectory():
 
         # Create partial orientation jacobian, excluding orientation about axis normal to paddle (x-axis of tip frame)
         A = np.array([[0, 1, 0], [0, 0, 1]])
-        Jw = np.vstack((np.zeros((1, Jw.shape[1])), A @ Rtip.T @ Jw))
-        J = np.vstack((Jv, Jw))
+        J = np.vstack((Jv, A @ Rtip.T @ Jw))
 
         # Similarly, modify wd to keep the equation wd = Jw*qdot consistent
-        wd = np.concatenate(([0], A @ Rtip.T @ wd))
-        xddot = np.concatenate((vd, wd))
+        xddot = np.concatenate((vd, A @ Rtip.T @ wd))
 
         # Get unit normal vector to paddle surface (x-basis vector)
         n = Rtip[:,0]
