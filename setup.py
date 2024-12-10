@@ -33,6 +33,7 @@ setup(
             'testrun_tk = dual_arm_ball_setter.testrun_tk:main',
             'demo1 = dual_arm_ball_setter.demo1:main',
             'test_normal_task = dual_arm_ball_setter.test_normal_task:main',
+            'final = dual_arm_ball_setter.final:main',
         ],
     },
 )
