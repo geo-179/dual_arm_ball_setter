@@ -25,7 +25,6 @@ class Trajectory():
         self.N_COMBINED = 14       # Total number of joints of combined system
         self.PADDLE_RADIUS = 0.25  
 
-
         ##################### ROBOT INITIALIZATION #####################
         # Set up the kinematic chain objects
         self.chain_1 = KinematicChain(node, 'base', 'panda_1_hand', self.jointnames_1())
@@ -43,6 +42,8 @@ class Trajectory():
         self.qd_2 = np.radians(np.zeros(self.N_ARM))
         self.qddot_2 = np.radians(np.zeros(self.N_ARM))
 
+        self.p0_2 = np.array([0.0, 0.0, 1.5])
+
         self.lam = 20
         self.gam = 0.1
 
@@ -52,17 +53,32 @@ class Trajectory():
 
 
         ##################### BALL INITIALIZATION #####################
-        # Drop ball in random location in 0.1 unit radius of base frame zero
-        (x,y) = (random.uniform(-0.1, 0.1), random.uniform(-0.1, 0.1))
+        g = 1
 
-        self.pball = np.array([x, y, 5.0])
-        self.vball = np.array([0.0, 0.0, 0.0])
-        self.aball = np.array([0.0, 0.0, -1.0])
+        p0_ball = np.array([random.uniform(-10.0, 10.0), random.uniform(-10.0, 10.0), random.uniform(0.0, 10.0)])
+        p1_ball = np.array([random.uniform(-0.5, 0.5), random.uniform(-1.0, 1.0), random.uniform(1.0, 2.0)])
+
+        # determined v0 that satisfies p0 and p1 start and end positions
+        v0_ball = np.zeros(3)
+        pr_ball = p0_ball + p1_ball
+
+        z = np.array([0.0, 0.0, 1.0])
+        pr_proj = np.array([pr_ball[0], pr_ball[1], 0.0])
+        get_theta = lambda v1, v2: np.arccos((v1 @ v2) / np.norm(v1 @ v2))
+        th_r0 = get_theta(v0_ball, pr_ball)
+        th_r1 = get_theta(v1_ball, pr_ball)
+        th_r0_max = get_theta(pr_ball, z)
+        th_r1_max = get_theta(pr_ball, pr_proj)
+
+        self.pball = p0_ball
+        self.vball = v0_ball
+        self.aball = np.array([0.0, 0.0, -g])
 
         # Intermediate ball position tracking variables
         self.pball_init = np.array([x, y, 5.0])
         self.pball_inter = np.array([0.0, 0.0, 1.5])
-
+        self.vball_last = self.vball
+        self.aball_last = self.aball
 
     def jointnames(self):
         ''' Combined joint names for both arms '''
@@ -96,23 +112,23 @@ class Trajectory():
 
     def evaluate(self, t, dt):
         ''' Evaluate at the given time. This was last called (dt) ago '''
-        
-        ''' T = np.sqrt(-2*abs(self.p0_2[2] - self.pball_init[2])/self.aball[2])
-
+        T = np.sqrt(-2*abs(self.p0_2[2] - self.pball_init[2])/self.aball[2])
         if t <= T:
-            (pd_2, vd_2) = goto(t, T, self.p0_2, np.array([self.pball[0], self.pball[1], self.p0_2[2]]))
+            # (pd_2, vd_2) = goto(t, T, self.p0_2, np.array([self.pball[0], self.pball[1], self.p0_2[2]]))
             self.pball_inter[0] = self.pball[0]
             self.pball_inter[1] = self.pball[1]
-            (a, a_prime) = goto(t, T, 0.0, np.pi / 4)
-            nd_2 = Rotx(a) @ np.array([0.0, 0.0, 1.0])
-            wd_2 = a_prime * np.array([1.0, 0.0, 0.0])
+            nd = -self.vball / np.norm(self.vball)
+            nddot = -self.aball / np.norm(self.aball)
+            wd = np.cross(nd, nddot)
+            vball_last = self.vball
+            aball_last = self.aball
         else:
-            pd_2 = np.array([self.pball_inter[0], self.pball_inter[1], self.p0_2[2]])
-            vd_2 = np.zeros(3)
-            nd_2 = Rotx(np.pi / 3) @ np.array([0.0, 0.0, 1.0])
-            wd_2 = np.zeros(3) '''
+            # pd_2 = np.array([self.pball_inter[0], self.pball_inter[1], self.p0_2[2]])
+            # vd_2 = np.zeros(3)
+            nd = -self.vball_last / np.norm(self.vball_last)
+            nddot = -self.aball_last
     
-        (qd, qddot) = self.ikin()
+        (qd, qddot, ptip_2, n) = self.ikin(dt, wd, nd)
         self.qd_1 = qd[self.i_1]
         self.qd_2 = qd[self.i_2]
 
@@ -123,23 +139,23 @@ class Trajectory():
         self.vball += dt * self.aball
         self.pball += dt * self.vball
 
-        '''# Determine if the ball is in collision with the paddle
+        # Determine if the ball is in collision with the paddle
         r = self.pball - ptip_2
         if n @ r < 1e-2 and np.linalg.norm(r) <= self.PADDLE_RADIUS:
             v_normal = (self.vball @ n) * n
             v_plane = self.vball - v_normal
-            self.vball = v_plane - v_normal '''
+            self.vball = v_plane - v_normal
 
         return (qd, qddot, self.pball)
 
 
-    def ikin(self, pd, vd, wd, nd):
+    def ikin(self, dt, wd, nd):
         ''' Compute the inverse kinematics of the combined 14 DOF system
             to achieve the desired primary, secondary, tertiary, and quaternary tasks '''
 
         # Calculate the individual chains
-        (ptip_1, Rtip_1, Jvbar_1, Jwbar_1) = self.chain1.fkin(self.qd_1)
-        (ptip_2, Rtip_2, Jvbar_2, Jwbar_2) = self.chain2.fkin(self.qd_2)
+        (ptip_1, Rtip_1, Jvbar_1, Jwbar_1) = self.chain_1.fkin(self.qd_1)
+        (ptip_2, Rtip_2, Jvbar_2, Jwbar_2) = self.chain_2.fkin(self.qd_2)
 
         # Expand the jacobians
         Jv_1 = self.Jblank.copy()  
@@ -159,21 +175,32 @@ class Trajectory():
         Jw_12 = Rtip_2.T @ (Jw_1 - Jw_2)
 
         # Calculate joint velocities for the primary task -- keeping hands together
-        ep_12 = ep(pd_12, p_12)
-        eR_12 = eR(Rd_12, R_12)
         J_p = np.vstack((Jv_12, Jw_12))
-        error_p = np.concatenate((ep_12, eR_12, np.zeros(8)))
-        xddot_p = np.concatenate(np.zeros(14))
-        primary = self.weighed_inv(J_p) @ (xddot_p + self.lam*error_p)
+        ep_12 = ep(self.pd_12, p_12)
+        eR_12 = eR(self.Rd_12, R_12)
+        error_p = np.concatenate((ep_12, eR_12))
+        xddot_p = np.zeros(6)
+        primary = self.weighted_inv(J_p) @ (xddot_p + self.lam*error_p)
 
-        # TODO: secondary task (normal), tertiary task (positioning), quaternary task (nominal arm configuration)
+        # Calculate joint velocities for the secondary task -- normal
+        A = np.array([[0, 1, 0], [0, 0, 1]])
+        J_s = self.nullspace(J_p)
+        J_s = A @ Rtip_2.T @ Jw_2
+
+        n = Rtip_2[:,0]  # Get unit normal vector to paddle surface (x-basis vector)
+        en = np.cross(n, nd)
+        wr = (wd + self.lam * en)
+        xrdot_s = A @ Rtip_2.T @ wr
+        secondary = self.weighted_inv(J_s) @ xrdot_s
+
+        # TODO: tertiary task (positioning), quaternary task (nominal arm configuration)
 
         # Perform the inverse kinematics to get the desired joint angles and velocities
-        qddot = primary  # + secondary + tertiary + quaternary
-        qd_last = self.qd_1 + self.qd_2
+        qddot = primary + secondary # + tertiary + quaternary
+        qd_last = np.concatenate((self.qd_1, self.qd_2))
         qd = qd_last + dt*qddot
 
-        return (qd, qddot)
+        return (qd, qddot, ptip_2, n)
 
 
     def weighted_inv(self, J):
