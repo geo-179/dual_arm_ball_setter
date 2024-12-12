@@ -56,11 +56,11 @@ class Trajectory():
         self.g = 9.81
 
         p0_ball = np.array([random.uniform(-1.0, 1.0), random.uniform(-1.0, 1.0), random.uniform(0.0, 3.0)])
-        p1_ball = np.array([random.uniform(-0.5, 0.5), random.uniform(-1.0, 1.0), random.uniform(1.0, 2.0)])
-
         # determined v0 that satisfies p0 and p1 start and end positions
-        
-        v0_ball = self.set_velocity(p0_ball, p1_ball, self.g)
+        v0_ball = np.array([random.uniform(-0.5, 0.5), random.uniform(-1.0, 1.0), random.uniform(1.0, 2.0)])
+
+        # v0_ball = self.set_velocity(p0_ball, p1_ball, self.g)
+        self.pball_final = tp1_ball.copy() # TODO: we need to select a ball
 
         self.pball = p0_ball
         self.vball = v0_ball
@@ -82,7 +82,7 @@ class Trajectory():
         pr_ball = p_init + p_goal
         z = np.array([0.0, 0.0, 1.0])
         pr_proj = np.array([pr_ball[0], pr_ball[1], 0.0])
-        get_theta = lambda v1, v2: np.arccos((v1 @ v2) / np.linalg.norm(v1 @ v2))
+        get_theta = lambda v1, v2: np.arccos((v1 @ v2) / np.linalg.norm(v1) * np.linalg.norm(v2))
         th_r0 = get_theta(v_init, pr_ball)
         th_r1 = get_theta(v_init, pr_ball)
         th_r0_max = get_theta(pr_ball, z)
@@ -146,8 +146,6 @@ class Trajectory():
 
 
     def evaluate(self, t, dt):
-
-        
         # Velocity tracking 
         print("vball = ", self.vball)
         self.vball[2] -= - self.g * t
@@ -182,7 +180,6 @@ class Trajectory():
         (qd, qddot, ptip_2, n) = self.ikin(dt, wd, nd)
         self.qd_1 = qd[self.i_1]
         self.qd_2 = qd[self.i_2]
-        
 
 
         # Return the desired joint and task (position/orientation) pos/vel.
@@ -237,7 +234,7 @@ class Trajectory():
 
         # Calculate joint velocities for the secondary task -- normal
         A = np.array([[0, 1, 0], [0, 0, 1]])
-        J_s = self.nullspace(J_p)
+        # J_s = self.nullspace(J_p)
         J_s = A @ Rtip_2.T @ Jw_2
 
         n = Rtip_2[:,0]  # Get unit normal vector to paddle surface (x-basis vector)
@@ -247,9 +244,24 @@ class Trajectory():
         secondary = self.weighted_inv(J_s) @ xrdot_s
 
         # TODO: tertiary task (positioning), quaternary task (nominal arm configuration)
+        # positioning
+        T = 6.0 # DUMMY
+        (pd, vd) = goto(t, T, self.p0_2, self.pball_final)
+
+        J_t = Jv_2 # both arms
+        e_pos = ep(pd, ptip_2)
+        xrdot_t = (vd + self.lam * e_pos)
+        tertiary = self.weighted_inv(J_t) @ xrdot_t
+
+        # quaternary
+        J_q = Jv_2 # both arms
+        # quaternary = self.weighted_inv(J_q) @ (self.lam * np.cos(self.qd_2)) # TODO: QD_2 IS KINDA WEIRD
+        quaternary = -np.pi / 2 - self.qd_2
 
         # Perform the inverse kinematics to get the desired joint angles and velocities
-        qddot = primary + secondary # + tertiary + quaternary
+        tertiary += self.nullspace(J_t) @ quaternary
+        secondary += self.nullspace(J_s) @ tertiary
+        qddot = primary + self.nullspace(J_p) @ secondary # + tertiary + quaternary
         qd_last = np.concatenate((self.qd_1, self.qd_2))
         qd = qd_last + dt*qddot
 
