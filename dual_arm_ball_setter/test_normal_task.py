@@ -30,7 +30,7 @@ class Trajectory():
         self.qdot0_1 = np.radians(np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
         self.qd_1 = self.q0_1
 
-        self.q0_2 = np.radians(np.array([0.0, np.deg2rad(46.5675), 0.0, np.deg2rad(-93.1349), 0.0, 0.0, np.deg2rad(46.5675)]))
+        self.q0_2 = np.radians(np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
         self.p0_2 = np.array([0.0, 0.0, 1.5])
         self.R0_2 = Reye()
         self.qd_2 = self.q0_2
@@ -94,7 +94,8 @@ class Trajectory():
             vd_2 = np.zeros(3)
             nd_2 = Rotx(np.pi / 3) @ np.array([0.0, 0.0, 1.0])
             wd_2 = np.zeros(3)
-    
+
+        ### Chain 2 kinematics ###
         (qd_2, qddot_2, ptip_2, Rtip_2, n) = self.ikin2(self.chain_2, dt, self.qd_2, pd_2, vd_2, nd_2, wd_2)
         self.qd_2 = qd_2
 
@@ -107,20 +108,20 @@ class Trajectory():
         Rd_1 = np.array([Rtip_2[:, 0], -Rtip_2[:, 1], -Rtip_2[:, 2]])
         wd_1 = -wd_2
 
+
         (qd_1, qddot_1, _, _) = self.ikin1(self.chain_1, dt, self.qd_1, pd_1, vd_1, Rd_1, wd_1)
         self.qd_1 = qd_1
 
         # Return the desired joint and task (position/orientation) pos/vel.
         qd = np.concatenate((qd_1, qd_2, np.zeros(4)))
         qddot = np.concatenate((qddot_1, qddot_2, np.zeros(4)))
-        
         self.vball += dt * self.aball
         self.pball += dt * self.vball
 
         # Determine if the ball is in collision with the paddle
         r = self.pball - ptip_2
         if n @ r < 1e-2 and np.linalg.norm(r) <= self.paddle_radius:
-            v_normal = (self.vball @ n) * n
+            v_normal = (self.vball @ n) * n       
             v_plane = self.vball - v_normal
             self.vball = v_plane - v_normal
 
@@ -149,23 +150,19 @@ class Trajectory():
 
         # Create partial orientation jacobian, excluding orientation about axis normal to paddle (x-axis of tip frame)
         A = np.array([[0, 1, 0], [0, 0, 1]])
-        # Jw = np.vstack((np.zeros((1, Jw.shape[1])), A @ Rtip.T @ Jw))
         J = np.vstack((Jv, A @ Rtip.T @ Jw))
-
-        # Similarly, modify wd to keep the equation wd = Jw*qdot consistent
-        # wd = np.concatenate(([0], A @ Rtip.T @ wd))
 
         # Get unit normal vector to paddle surface (x-basis vector)
         n = Rtip[:,0]
 
         ep_ = ep(pd, ptip)
         en = np.cross(n, nd)
-        # error = np.concatenate((ep_, en))
 
         damping = self.gam**2 * np.eye(7)
-        wr = (wd + self.lam * en)
 
-        xrdot = np.concatenate((vd + self.lam * ep_, A @ Rtip @ wr))
+        vr = vd + self.lam * ep_
+        wr = wd + self.lam * en
+        xrdot = np.concatenate((vr, A @ Rtip @ wr))
         qddot = np.linalg.pinv(J.T @ J + damping) @ J.T @ xrdot
 
         qd = qd_last + dt*qddot
