@@ -53,32 +53,67 @@ class Trajectory():
 
 
         ##################### BALL INITIALIZATION #####################
-        g = 1
+        self.g = 9.81
 
-        p0_ball = np.array([random.uniform(-10.0, 10.0), random.uniform(-10.0, 10.0), random.uniform(0.0, 10.0)])
+        p0_ball = np.array([random.uniform(-1.0, 1.0), random.uniform(-1.0, 1.0), random.uniform(0.0, 3.0)])
         p1_ball = np.array([random.uniform(-0.5, 0.5), random.uniform(-1.0, 1.0), random.uniform(1.0, 2.0)])
 
         # determined v0 that satisfies p0 and p1 start and end positions
-        v0_ball = np.zeros(3)
-        pr_ball = p0_ball + p1_ball
-
-        z = np.array([0.0, 0.0, 1.0])
-        pr_proj = np.array([pr_ball[0], pr_ball[1], 0.0])
-        get_theta = lambda v1, v2: np.arccos((v1 @ v2) / np.norm(v1 @ v2))
-        th_r0 = get_theta(v0_ball, pr_ball)
-        th_r1 = get_theta(v1_ball, pr_ball)
-        th_r0_max = get_theta(pr_ball, z)
-        th_r1_max = get_theta(pr_ball, pr_proj)
+        
+        v0_ball = self.set_velocity(p0_ball, p1_ball, self.g)
 
         self.pball = p0_ball
         self.vball = v0_ball
-        self.aball = np.array([0.0, 0.0, -g])
+        self.aball = np.array([0.0, 0.0, -self.g])
 
         # Intermediate ball position tracking variables
-        self.pball_init = np.array([x, y, 5.0])
+        self.pball_init = p0_ball
         self.pball_inter = np.array([0.0, 0.0, 1.5])
         self.vball_last = self.vball
         self.aball_last = self.aball
+     
+    def set_velocity(self, p_init, p_goal, g):
+        v_init = np.array([random.uniform(0.0, 1.0), random.uniform(0.0, 1.0), random.uniform(0.0, 1.0)])
+        v_init /= np.linalg.norm(v_init)
+
+        v_0 = np.zeros(3)
+
+        ### set angle bound 
+        pr_ball = p_init + p_goal
+        z = np.array([0.0, 0.0, 1.0])
+        pr_proj = np.array([pr_ball[0], pr_ball[1], 0.0])
+        get_theta = lambda v1, v2: np.arccos((v1 @ v2) / np.linalg.norm(v1 @ v2))
+        th_r0 = get_theta(v_init, pr_ball)
+        th_r1 = get_theta(v_init, pr_ball)
+        th_r0_max = get_theta(pr_ball, z)
+        th_r1_max = get_theta(pr_ball, pr_proj)
+
+        while True:
+            # set magnitude criteria
+            dx, dy, dz = p_goal - p_init
+            # constants for quadratic z = z0 + v0z *t - (1/2) * g * t^2
+            a = -0.5 * g
+            b = v_init[2]
+            c = -dz
+            disc = b**2 - 4*a*c
+            
+            solution_condition = th_r0 <= th_r0_max and th_r1 < th_r1_max and disc >= 0
+
+            if solution_condition:    
+                t_flight = (-b + np.sqrt(disc)) / (2 * a)
+                magnitude = dx /(v_init[0] * t_flight)      # IDK if you can gurantee if the scaling factor is the same
+                v_0 = v_init * magnitude
+                return v_0
+            else:
+                print("HELLLLLLLLLLLOOOOOOOOOOO")
+                v_init = np.array([random.uniform(0.0, 1.0), random.uniform(0.0, 1.0), random.uniform(0.0, 1.0)])
+                v_init /= np.linalg.norm(v_init)
+
+                th_r0 = get_theta(v_init, pr_ball)
+                th_r1 = get_theta(v_init, pr_ball)
+                th_r0_max = get_theta(pr_ball, z)
+                th_r1_max = get_theta(pr_ball, pr_proj)
+
 
     def jointnames(self):
         ''' Combined joint names for both arms '''
@@ -111,26 +146,44 @@ class Trajectory():
 
 
     def evaluate(self, t, dt):
-        ''' Evaluate at the given time. This was last called (dt) ago '''
-        T = np.sqrt(-2*abs(self.p0_2[2] - self.pball_init[2])/self.aball[2])
-        if t <= T:
-            # (pd_2, vd_2) = goto(t, T, self.p0_2, np.array([self.pball[0], self.pball[1], self.p0_2[2]]))
-            self.pball_inter[0] = self.pball[0]
-            self.pball_inter[1] = self.pball[1]
-            nd = -self.vball / np.norm(self.vball)
-            nddot = -self.aball / np.norm(self.aball)
-            wd = np.cross(nd, nddot)
-            vball_last = self.vball
-            aball_last = self.aball
-        else:
-            # pd_2 = np.array([self.pball_inter[0], self.pball_inter[1], self.p0_2[2]])
-            # vd_2 = np.zeros(3)
-            nd = -self.vball_last / np.norm(self.vball_last)
-            nddot = -self.aball_last
-    
+
+        
+        # Velocity tracking 
+        print("vball = ", self.vball)
+        self.vball[2] -= - self.g * t
+        print("vball = ", self.vball)
+
+
+        # ''' Evaluate at the given time. This was last called (dt) ago '''
+        # T = np.sqrt(-2*abs(self.p0_2[2] - self.pball_init[2])/self.aball[2])
+        # if t <= T:
+        #     # (pd_2, vd_2) = goto(t, T, self.p0_2, np.array([self.pball[0], self.pball[1], self.p0_2[2]]))
+        #     self.pball_inter[0] = self.pball[0]
+        #     self.pball_inter[1] = self.pball[1]
+        #     nd = -self.vball / np.linalg.norm(self.vball)
+        #     nddot = -self.aball / np.linalg.norm(self.aball)
+        #     wd = np.cross(nd, nddot)
+        #     #vball_last = self.vball
+        #     #aball_last = self.aball
+        # else:
+        #     # pd_2 = np.array([self.pball_inter[0], self.pball_inter[1], self.p0_2[2]])
+        #     # vd_2 = np.zeros(3)
+        #     nd = -self.vball_last / np.linalg.norm(self.vball_last)
+        #     nddot = -self.aball_last
+
+        print("aball = ",self.aball)
+        print("norm = ", np.linalg.norm(self.aball))
+
+        nd = -self.vball / np.linalg.norm(self.vball)
+        nddot = -self.aball / np.linalg.norm(self.aball)
+        wd = np.cross(nd, nddot)
+
+
         (qd, qddot, ptip_2, n) = self.ikin(dt, wd, nd)
         self.qd_1 = qd[self.i_1]
         self.qd_2 = qd[self.i_2]
+        
+
 
         # Return the desired joint and task (position/orientation) pos/vel.
         qd = np.concatenate((qd, np.zeros(4)))
@@ -211,6 +264,9 @@ class Trajectory():
     def nullspace(self, J): 
         ''' Get the nullspace projection of J, using a weighted inverse '''
         return np.eye(self.N_COMBINED) - self.weighted_inv(J) @ J
+    
+
+
 
 
 #
