@@ -34,17 +34,17 @@ class Trajectory():
         self.chain_to_hand_2 = KinematicChain(node, 'base', 'panda_2_hand', self.jointnames_2())
 
         self.Jblank = np.zeros((3, self.N_COMBINED))
-        
+
         indexlist = lambda start, n: list(range(start, start+n))
         self.i_1 = indexlist(0, self.N_ARM)
         self.i_2 = indexlist(self.N_ARM, self.N_ARM)
 
-        self.qd_1 = np.radians(np.zeros(self.N_ARM))
+        self.qd_1 = np.array([1.37824081, 1.01533737, -0.11654914, 1.55366408, 0.10457677, 0.83709106, 0.91701575])
         self.qddot_1 = np.radians(np.zeros(self.N_ARM))
-        self.qd_2 = np.radians(np.zeros(self.N_ARM))
+        self.qd_2 = np.array([0.98413218, 0.85909937, -2.66924646, -2.16988993, -2.70452348, 3.13046597, -2.41125022])
         self.qddot_2 = np.radians(np.zeros(self.N_ARM))
-
-        self.p0_2 = np.array([0.0, 0.0, 1.5])
+        (p0_2, R0_2, _, _) = self.chain_2.fkin(self.qd_2)
+        self.p0_2 = p0_2
 
         self.lam = 20
         self.gam = 0.1
@@ -53,7 +53,6 @@ class Trajectory():
         self.pd_12 = np.array([0.0, 0.0, self.PADDLE_RADIUS])  
         self.Rd_12 = Rotx(np.pi)
 
-
         ##################### BALL INITIALIZATION #####################
         self.g = 2
 
@@ -61,22 +60,37 @@ class Trajectory():
         v0_ball = np.array([random.uniform(-0.5, 0.5), random.uniform(-1.0, 1.0), random.uniform(1.0, 2.0)])
 
         p0_ball = np.array([1.5, 0.0, 1.5])
-        v0_ball = np.array([-1.0, 0.0, 1.8])
+        v0_ball = np.array([-1.0, 0.0, 1.25])
+        #p0_ball = np.array([0.0, 0.0, 6.0])
+        #v0_ball = np.array([0.0, 0.0, 0.5])
         (self.x_c, self.y_c, self.z_c) = self.p0_2
         (self.x_0, self.y_0, self.z_0) = p0_ball
         (self.v0_x, self.v0_y, self.v0_z) = v0_ball
 
         initial_guess = 100.0
         self.T = fsolve(self.derivative_dist_paddle_to_traj, initial_guess)[0]
-        print("T:::::: ", self.T)
         self.pball_final = np.array([self.x_0 + self.v0_x * self.T,
                                      self.y_0 + self.v0_y * self.T,
                                      self.z_0 + self.v0_z * self.T - 1 / 2 * self.g * self.T ** 2])
 
+        # BELOW TABLE CASE
+        TABLE_HEIGHT = 1.5
+        if self.pball_final[2] < TABLE_HEIGHT:
+            self.T = max(np.roots([- 1 / 2 * self.g, self.v0_z, self.z_0 - TABLE_HEIGHT]))
+            self.pball_final = np.array([self.x_0 + self.v0_x * self.T,
+                                         self.y_0 + self.v0_y * self.T,
+                                         self.z_0 + self.v0_z * self.T - 1 / 2 * self.g * self.T ** 2])
+            print('PBALL_FINALLLLL', self.pball_final)
+
         self.vball_impact = np.array([self.v0_x, self.v0_y, self.v0_z - self.g * self.T])
+
+        # self.normal_impact = -self.vball_impact / np.linalg.norm(self.vball_impact)
         self.pball = p0_ball
         self.vball = v0_ball
         self.aball = np.array([0.0, 0.0, -self.g])
+
+        self.n0 = R0_2[:, 2]
+        self.nf = - self.vball_impact / np.linalg.norm(self.vball_impact)
 
 
     def derivative_dist_paddle_to_traj(self, t):
@@ -160,11 +174,15 @@ class Trajectory():
 
     def evaluate(self, t, dt):
         # Trajectory generation
-        if t < self.T:
-            (pd, vd) = goto(t, self.T, self.p0_2, self.pball_final)
-            nd = -self.vball / np.linalg.norm(self.vball)
-            nddot = -self.aball / np.linalg.norm(self.aball)
-            wd = np.cross(nd, nddot)
+        scale = 1/3
+        if t < self.T * scale:
+            (pd, vd) = goto(t, self.T * scale, self.p0_2, self.pball_final)
+
+            theta = acos(np.dot(self.n0, self.nf))
+            (alpha, alpha_dot) = goto(t, self.T * scale, 0.0, theta)
+            a_hat = np.cross(self.n0, self.nf) / sin(theta)
+            nd = Rotn(a_hat, alpha) @ self.n0
+            wd = alpha_dot * a_hat
         else:
             pd = self.pball_final
             vd = np.zeros(3)
@@ -188,7 +206,6 @@ class Trajectory():
         # Determine if the ball is in collision with the paddle
         r = self.pball - ptip_2
         if n @ r < 1e-2 and np.linalg.norm(r) <= self.PADDLE_RADIUS:
-            print("COLISION TIME::::, ", t)
             v_normal = (self.vball @ n) * n
             v_plane = self.vball - v_normal
             self.vball = v_plane - v_normal
@@ -252,7 +269,14 @@ class Trajectory():
         qdot_t = self.weighted_inv(J_t) @ xrdot_t
 
         # Quaternary task -- natural arm configuration
-        qdot_q = np.zeros(14) # self.lam * (-np.pi/2 - qd_last)
+
+        qdot_q = np.zeros(14)
+        # qdot_q = self.lam * (q_natural - qd_last)
+        # elbow natural number
+        qdot_q[3] = self.lam * (- np.pi / 2 - qd_last[3])
+        qdot_q[10] = self.lam * (- np.pi / 2 - qd_last[10])
+        qdot_q[6] = self.lam * (np.pi / 4 - qd_last[6])
+        qdot_q[13] = self.lam * (np.pi / 4 - qd_last[13])
 
         # Perform the inverse kinematics to get the desired joint angles and velocities
         qdot_extra = self.nullspace(J_p) @ (qdot_s + self.nullspace(J_s) @ (qdot_t + self.nullspace(J_t) @ qdot_q))
@@ -274,8 +298,6 @@ class Trajectory():
     def nullspace(self, J): 
         ''' Get the nullspace projection of J, using a weighted inverse '''
         return np.eye(self.N_COMBINED) - self.weighted_inv(J) @ J
-    
-
 
 
 
