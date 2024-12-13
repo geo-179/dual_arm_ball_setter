@@ -252,7 +252,7 @@ class Trajectory():
         qdot_t = self.weighted_inv(J_t) @ xrdot_t
 
         # Quaternary task -- natural arm configuration
-        qdot_q = -np.pi/2 - qd_last
+        qdot_q = np.zeros(14) # self.lam * (-np.pi/2 - qd_last)
 
         # Perform the inverse kinematics to get the desired joint angles and velocities
         qdot_extra = self.nullspace(J_p) @ (qdot_s + self.nullspace(J_s) @ (qdot_t + self.nullspace(J_t) @ qdot_q))
