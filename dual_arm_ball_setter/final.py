@@ -26,6 +26,7 @@ class Trajectory():
         self.N_COMBINED = 14       # Total number of joints of combined system
         self.PADDLE_RADIUS = 0.25  
 
+
         ##################### ROBOT INITIALIZATION #####################
         # Set up the kinematic chain objects
         self.chain_1 = KinematicChain(node, 'base', 'panda_1_hand', self.jointnames_1())
@@ -57,7 +58,6 @@ class Trajectory():
         self.g = 2
 
         p0_ball = np.array([random.uniform(0.0, 3.0), random.uniform(-0.5, 0.5), random.uniform(0.0, 10.0)])
-        # determined v0 that satisfies p0 and p1 start and end positions
         v0_ball = np.array([random.uniform(-0.5, 0.5), random.uniform(-1.0, 1.0), random.uniform(1.0, 2.0)])
 
         p0_ball = np.array([1.5, 0.0, 1.5])
@@ -68,19 +68,16 @@ class Trajectory():
 
         initial_guess = 100.0
         self.T = fsolve(self.derivative_dist_paddle_to_traj, initial_guess)[0]
-
-        # v0_ball = self.set_velocity(p0_ball, p1_ball, self.g)
-        # self.pball_final = tp1_ball.copy() # TODO: we need to select a ball
+        print("T:::::: ", self.T)
         self.pball_final = np.array([self.x_0 + self.v0_x * self.T,
                                      self.y_0 + self.v0_y * self.T,
                                      self.z_0 + self.v0_z * self.T - 1 / 2 * self.g * self.T ** 2])
 
+        self.vball_impact = np.array([self.v0_x, self.v0_y, self.v0_z - self.g * self.T])
         self.pball = p0_ball
         self.vball = v0_ball
         self.aball = np.array([0.0, 0.0, -self.g])
 
-        # second part of trajectory
-        self.vball_impact = np.array([self.v0_x, self.v0_y, self.v0_z - self.g * self.T])
 
     def derivative_dist_paddle_to_traj(self, t):
         x_comp = 2 * (self.x_0 + self.v0_x * t - self.x_c) * self.v0_x
@@ -88,6 +85,7 @@ class Trajectory():
         z_comp = 2 * (self.z_0 + self.v0_z * t - 1/2 * self.g * t ** 2 - self.z_c) * (self.v0_z - self.g * t)
         return x_comp + y_comp + z_comp
      
+
     def set_velocity(self, p_init, p_goal, g):
         v_init = np.array([random.uniform(0.0, 1.0), random.uniform(0.0, 1.0), random.uniform(0.0, 1.0)])
         v_init /= np.linalg.norm(v_init)
@@ -129,6 +127,7 @@ class Trajectory():
                 th_r0_max = get_theta(pr_ball, z)
                 th_r1_max = get_theta(pr_ball, pr_proj)
 
+
     def jointnames(self):
         ''' Combined joint names for both arms '''
         return self.jointnames_1() + self.jointnames_2() + ['panda_1_finger_joint1',
@@ -147,6 +146,7 @@ class Trajectory():
                 'panda_1_joint6',
                 'panda_1_joint7']
 
+
     def jointnames_2(self):
         ''' Declare the joint names for the second arm '''
         return ['panda_2_joint1',
@@ -159,9 +159,8 @@ class Trajectory():
 
 
     def evaluate(self, t, dt):
-        # positioning
+        # Trajectory generation
         if t < self.T:
-
             (pd, vd) = goto(t, self.T, self.p0_2, self.pball_final)
             nd = -self.vball / np.linalg.norm(self.vball)
             nddot = -self.aball / np.linalg.norm(self.aball)
@@ -172,32 +171,33 @@ class Trajectory():
             nd = -self.vball_impact / np.linalg.norm(self.vball_impact)
             wd = np.zeros(3)
 
+
+        # Compute inverse kinematics
         (qd, qddot, ptip_2, n) = self.ikin(dt, wd, nd, pd, vd)
         self.qd_1 = qd[self.i_1]
         self.qd_2 = qd[self.i_2]
 
-
-        # Return the desired joint and task (position/orientation) pos/vel.
+        # Concatenate zeros for unused finger joints
         qd = np.concatenate((qd, np.zeros(4)))
         qddot = np.concatenate((qddot, np.zeros(4)))
         
-        self.vball += dt * self.aball
+        # Update ball motion
         self.pball += dt * self.vball
+        self.vball += dt * self.aball
 
-        # Determine if the b all is in collision with the paddle
+        # Determine if the ball is in collision with the paddle
         r = self.pball - ptip_2
         if n @ r < 1e-2 and np.linalg.norm(r) <= self.PADDLE_RADIUS:
+            print("COLISION TIME::::, ", t)
             v_normal = (self.vball @ n) * n
             v_plane = self.vball - v_normal
             self.vball = v_plane - v_normal
+        # Otherwise, handle collision with table top
         elif -0.5 <= self.pball[0] <= 0.5 and -1 <= self.pball[1] < 1 and self.pball[2] <= 1:
-            # TABLE TOP
             self.vball[2] *= -1
+        # Otherwise, handle collision with floor
         elif self.pball[2] <= 0.0:
-            # FLOOR
             self.vball[2] *= -1
-
-        print(self.pball)
 
         return (qd, qddot, self.pball)
 
@@ -228,39 +228,39 @@ class Trajectory():
         Jv_12 = Rtip_2.T @ (Jv_1 - Jv_2 + crossmat(ptip_1 - ptip_2) @ Jw_2)
         Jw_12 = Rtip_2.T @ (Jw_1 - Jw_2)
 
-        # Calculate joint velocities for the primary task -- keeping hands together
+        # Primary task -- keeping hands together
         J_p = np.vstack((Jv_12, Jw_12))
         ep_12 = ep(self.pd_12, p_12)
         eR_12 = eR(self.Rd_12, R_12)
         error_p = np.concatenate((ep_12, eR_12))
         xddot_p = np.zeros(6)
-        primary = self.weighted_inv(J_p) @ (xddot_p + self.lam*error_p)
+        qdot_p = self.weighted_inv(J_p) @ (xddot_p + self.lam*error_p)
 
-        # Calculate joint velocities for the secondary task -- normal
+        # Secondary task -- normal
+        n = Rtip_2[:,0]            # Get unit normal vector to paddle surface (x-basis vector)
         A = np.array([[0, 1, 0], [0, 0, 1]])
-        J_s = A @ Rtip_2.T @ Jw_2
-
-        n = Rtip_2[:,0]  # Get unit normal vector to paddle surface (x-basis vector)
+        J_s = A @ Rtip_2.T @ Jw_2  # Define J_s to ignore rotation about n (partial orientation Jacobian)
         en = np.cross(n, nd)
-        wr = (wd + self.lam * en)
+        wr = (wd + self.lam*en)
         xrdot_s = A @ Rtip_2.T @ wr
-        secondary = self.weighted_inv(J_s) @ xrdot_s
+        qdot_s = self.weighted_inv(J_s) @ xrdot_s
 
-        # TODO: tertiary task (positioning), quaternary task (nominal arm configuration)
-
-        # tertiary
+        # Tertiary task -- position
         J_t = Jv_2 # both arms
         e_pos = ep(pd, ptip_2)
-        xrdot_t = (vd + self.lam * e_pos)
-        tertiary = self.weighted_inv(J_t) @ xrdot_t
+        xrdot_t = (vd + self.lam*e_pos)
+        qdot_t = self.weighted_inv(J_t) @ xrdot_t
 
-        # quaternary
-        quaternary = - np.pi / 2 - qd_last
+        # Quaternary task -- natural arm configuration
+        qdot_q = -np.pi/2 - qd_last
 
         # Perform the inverse kinematics to get the desired joint angles and velocities
-        tertiary += self.nullspace(J_t) @ quaternary
-        secondary += self.nullspace(J_s) @ tertiary
-        qddot = primary + self.nullspace(J_p) @ secondary # + tertiary + quaternary
+        qdot_extra = self.nullspace(J_p) @ (qdot_s + self.nullspace(J_s) @ (qdot_t + self.nullspace(J_t) @ qdot_q))
+
+        # qdot_t += self.nullspace(J_t) @ qdot_q
+        # qdot_s += self.nullspace(J_s) @ qdot_t
+        # qddot = qdot_p + self.nullspace(J_p) @ qdot_s # + tertiary + quaternary
+        qddot = qdot_p + qdot_extra
         qd = qd_last + dt*qddot
 
         return (qd, qddot, ptip_2, n)
