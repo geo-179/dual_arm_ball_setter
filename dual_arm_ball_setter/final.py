@@ -251,6 +251,7 @@ class Trajectory():
         eR_12 = eR(self.Rd_12, R_12)
         error_p = np.concatenate((ep_12, eR_12))
         xddot_p = np.zeros(6)
+        print("PRIMARY COST: ", np.linalg.norm(error_p))
         qdot_p = self.weighted_inv(J_p) @ (xddot_p + self.lam*error_p)
 
         # Secondary task -- normal
@@ -258,6 +259,7 @@ class Trajectory():
         A = np.array([[0, 1, 0], [0, 0, 1]])
         J_s = A @ Rtip_2.T @ Jw_2  # Define J_s to ignore rotation about n (partial orientation Jacobian)
         en = np.cross(n, nd)
+        print("SECONDARY COST: ", np.linalg.norm(en))
         wr = (wd + self.lam*en)
         xrdot_s = A @ Rtip_2.T @ wr
         qdot_s = self.weighted_inv(J_s) @ xrdot_s
@@ -266,6 +268,7 @@ class Trajectory():
         J_t = Jv_2 # both arms
         e_pos = ep(pd, ptip_2)
         xrdot_t = (vd + self.lam*e_pos)
+        print("TERTRIARY COST: ", np.linalg.norm(e_pos))
         qdot_t = self.weighted_inv(J_t) @ xrdot_t
 
         # Quaternary task -- natural arm configuration
@@ -273,18 +276,27 @@ class Trajectory():
         qdot_q = np.zeros(14)
         # qdot_q = self.lam * (q_natural - qd_last)
         # elbow natural number
-        qdot_q[3] = self.lam * (- np.pi / 2 - qd_last[3])
-        qdot_q[10] = self.lam * (- np.pi / 2 - qd_last[10])
-        qdot_q[6] = self.lam * (np.pi / 4 - qd_last[6])
-        qdot_q[13] = self.lam * (np.pi / 4 - qd_last[13])
+        qdot_q[3] = 20 * self.lam * (- np.pi / 2 - qd_last[3])
+        qdot_q[10] = 20 * self.lam * (- np.pi / 2 - qd_last[10])
+        qdot_q[6] = 20 * self.lam * (np.pi / 4 - qd_last[6])
+        qdot_q[13] = 20 * self.lam * (np.pi / 4 - qd_last[13])
 
         # Perform the inverse kinematics to get the desired joint angles and velocities
-        qdot_extra = self.nullspace(J_p) @ (qdot_s + self.nullspace(J_s) @ (qdot_t + self.nullspace(J_t) @ qdot_q))
+        # qdot_extra = self.nullspace(J_p) @ (qdot_s + self.nullspace(J_s) @ (qdot_t + self.nullspace(J_t) @ qdot_q))
+
+        print("QUATERNARY COST: ", np.linalg.norm(qdot_q))
+
+        # print('qdot_q: ', qdot_q)
+        # print('NULL SPACE qdot_q: ', self.nullspace(J_p) @ self.nullspace(J_s) @ self.nullspace(J_t) @ qdot_q)
+        print('---------------------------------')
 
         # qdot_t += self.nullspace(J_t) @ qdot_q
         # qdot_s += self.nullspace(J_s) @ qdot_t
         # qddot = qdot_p + self.nullspace(J_p) @ qdot_s # + tertiary + quaternary
-        qddot = qdot_p + qdot_extra
+        qdot_p_extra = self.nullspace(J_p) @ qdot_s
+        qdot_s_extra = self.nullspace(np.vstack((J_p, J_s))) @ qdot_t
+        qdot_t_extra = self.nullspace(np.vstack((J_p, J_s, J_t))) @ qdot_q
+        qddot = qdot_p + qdot_p_extra + qdot_s_extra + qdot_t_extra
         qd = qd_last + dt*qddot
 
         return (qd, qddot, ptip_2, n)
@@ -292,12 +304,14 @@ class Trajectory():
 
     def weighted_inv(self, J):
         ''' Compute the weighted inverse of J '''
-        return np.linalg.pinv(J.T @ J + self.gam**2 * np.eye(self.N_COMBINED)) @ J.T
+        N = (J.T @ J).shape[0]
+        return np.linalg.pinv(J.T @ J + self.gam**2 * np.eye(N)) @ J.T
 
 
     def nullspace(self, J): 
         ''' Get the nullspace projection of J, using a weighted inverse '''
-        return np.eye(self.N_COMBINED) - self.weighted_inv(J) @ J
+        N = (self.weighted_inv(J) @ J).shape[0]
+        return np.eye(N) - self.weighted_inv(J) @ J
 
 
 
