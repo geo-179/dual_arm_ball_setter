@@ -227,7 +227,6 @@ class Trajectory():
         qdot_t = self.weighted_inv(J_t) @ xrdot_t
 
         # Quaternary task -- natural arm configuration
-
         qdot_q = np.zeros(14)
         qdot_q[3] = -np.pi/2 - qd_last[3]
         qdot_q[10] = -np.pi/2 - qd_last[10]
@@ -247,7 +246,7 @@ class Trajectory():
         print("TERTRIARY COST: ", np.linalg.norm(e_pos))
         print("QUATERNARY COST: ", np.linalg.norm(qdot_q))
         print('---------------------------------')
-        
+
         return (qd, qddot, ptip_2, n)
 
 
