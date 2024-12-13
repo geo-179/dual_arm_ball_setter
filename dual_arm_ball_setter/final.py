@@ -25,7 +25,7 @@ class Trajectory():
         self.N_ARM = 7             # Number of joints per arm
         self.N_COMBINED = 14       # Total number of joints of combined system
         self.PADDLE_RADIUS = 0.25  
-
+        self.TABLE_HEIGHT = 1.5
 
         ##################### ROBOT INITIALIZATION #####################
         # Set up the kinematic chain objects
@@ -40,13 +40,14 @@ class Trajectory():
         self.i_2 = indexlist(self.N_ARM, self.N_ARM)
 
         self.qd_1 = np.array([1.37824081, 1.01533737, -0.11654914, 1.55366408, 0.10457677, 0.83709106, 0.91701575])
-        self.qddot_1 = np.radians(np.zeros(self.N_ARM))
         self.qd_2 = np.array([0.98413218, 0.85909937, -2.66924646, -2.16988993, -2.70452348, 3.13046597, -2.41125022])
+        self.qddot_1 = np.radians(np.zeros(self.N_ARM))
         self.qddot_2 = np.radians(np.zeros(self.N_ARM))
         (p0_2, R0_2, _, _) = self.chain_2.fkin(self.qd_2)
         self.p0_2 = p0_2
 
         self.lam = 20
+        self.lam_q = 10  # set lower lamda for q, so it doesn't interfere with the other tasks
         self.gam = 0.1
 
         # Desired position and orientaion of chain1 tip in coordinates of and relative to chain2 tip
@@ -63,34 +64,34 @@ class Trajectory():
         v0_ball = np.array([-1.0, 0.0, 1.25])
         #p0_ball = np.array([0.0, 0.0, 6.0])
         #v0_ball = np.array([0.0, 0.0, 0.5])
+
         (self.x_c, self.y_c, self.z_c) = self.p0_2
         (self.x_0, self.y_0, self.z_0) = p0_ball
         (self.v0_x, self.v0_y, self.v0_z) = v0_ball
 
         initial_guess = 100.0
         self.T = fsolve(self.derivative_dist_paddle_to_traj, initial_guess)[0]
-        self.pball_final = np.array([self.x_0 + self.v0_x * self.T,
-                                     self.y_0 + self.v0_y * self.T,
-                                     self.z_0 + self.v0_z * self.T - 1 / 2 * self.g * self.T ** 2])
+        self.pball_final = self.compute_ball_kin(self.T)
 
-        # BELOW TABLE CASE
-        TABLE_HEIGHT = 1.5
-        if self.pball_final[2] < TABLE_HEIGHT:
-            self.T = max(np.roots([- 1 / 2 * self.g, self.v0_z, self.z_0 - TABLE_HEIGHT]))
-            self.pball_final = np.array([self.x_0 + self.v0_x * self.T,
-                                         self.y_0 + self.v0_y * self.T,
-                                         self.z_0 + self.v0_z * self.T - 1 / 2 * self.g * self.T ** 2])
-            print('PBALL_FINALLLLL', self.pball_final)
+        # Reject solutions below table
+        if self.pball_final[2] < self.TABLE_HEIGHT:
+            self.T = max(np.roots([-1/2*self.g, self.v0_z, self.z_0 - self.TABLE_HEIGHT]))
+            self.pball_final = self.compute_ball_kin(self.T)
 
-        self.vball_impact = np.array([self.v0_x, self.v0_y, self.v0_z - self.g * self.T])
+        self.vball_impact = np.array([self.v0_x, self.v0_y, self.v0_z - self.g*self.T])
 
-        # self.normal_impact = -self.vball_impact / np.linalg.norm(self.vball_impact)
         self.pball = p0_ball
         self.vball = v0_ball
         self.aball = np.array([0.0, 0.0, -self.g])
 
         self.n0 = R0_2[:, 2]
-        self.nf = - self.vball_impact / np.linalg.norm(self.vball_impact)
+        self.nf = -self.vball_impact / np.linalg.norm(self.vball_impact)
+
+
+    def compute_ball_kin(self, t):
+        return np.array([self.x_0 + self.v0_x * self.T,
+                         self.y_0 + self.v0_y * self.T,
+                         self.z_0 + self.v0_z * self.T - 1/2*self.g*self.T**2])
 
 
     def derivative_dist_paddle_to_traj(self, t):
@@ -99,48 +100,6 @@ class Trajectory():
         z_comp = 2 * (self.z_0 + self.v0_z * t - 1/2 * self.g * t ** 2 - self.z_c) * (self.v0_z - self.g * t)
         return x_comp + y_comp + z_comp
      
-
-    def set_velocity(self, p_init, p_goal, g):
-        v_init = np.array([random.uniform(0.0, 1.0), random.uniform(0.0, 1.0), random.uniform(0.0, 1.0)])
-        v_init /= np.linalg.norm(v_init)
-
-        v_0 = np.zeros(3)
-
-        ### set angle bound
-        pr_ball = p_init + p_goal
-        z = np.array([0.0, 0.0, 1.0])
-        pr_proj = np.array([pr_ball[0], pr_ball[1], 0.0])
-        get_theta = lambda v1, v2: np.arccos((v1 @ v2) / np.linalg.norm(v1) * np.linalg.norm(v2))
-        th_r0 = get_theta(v_init, pr_ball)
-        th_r1 = get_theta(v_init, pr_ball)
-        th_r0_max = get_theta(pr_ball, z)
-        th_r1_max = get_theta(pr_ball, pr_proj)
-
-        while True:
-            # set magnitude criteria
-            dx, dy, dz = p_goal - p_init
-            # constants for quadratic z = z0 + v0z *t - (1/2) * g * t^2
-            a = -0.5 * g
-            b = v_init[2]
-            c = -dz
-            disc = b**2 - 4*a*c
-
-            solution_condition = th_r0 <= th_r0_max and th_r1 < th_r1_max and disc >= 0
-
-            if solution_condition:
-                t_flight = (-b + np.sqrt(disc)) / (2 * a)
-                magnitude = dx /(v_init[0] * t_flight)      # IDK if you can gurantee if the scaling factor is the same
-                v_0 = v_init * magnitude
-                return v_0
-            else:
-                v_init = np.array([random.uniform(0.0, 1.0), random.uniform(0.0, 1.0), random.uniform(0.0, 1.0)])
-                v_init /= np.linalg.norm(v_init)
-
-                th_r0 = get_theta(v_init, pr_ball)
-                th_r1 = get_theta(v_init, pr_ball)
-                th_r0_max = get_theta(pr_ball, z)
-                th_r1_max = get_theta(pr_ball, pr_proj)
-
 
     def jointnames(self):
         ''' Combined joint names for both arms '''
@@ -188,7 +147,6 @@ class Trajectory():
             vd = np.zeros(3)
             nd = -self.vball_impact / np.linalg.norm(self.vball_impact)
             wd = np.zeros(3)
-
 
         # Compute inverse kinematics
         (qd, qddot, ptip_2, n) = self.ikin(dt, wd, nd, pd, vd)
@@ -251,7 +209,6 @@ class Trajectory():
         eR_12 = eR(self.Rd_12, R_12)
         error_p = np.concatenate((ep_12, eR_12))
         xddot_p = np.zeros(6)
-        print("PRIMARY COST: ", np.linalg.norm(error_p))
         qdot_p = self.weighted_inv(J_p) @ (xddot_p + self.lam*error_p)
 
         # Secondary task -- normal
@@ -259,7 +216,6 @@ class Trajectory():
         A = np.array([[0, 1, 0], [0, 0, 1]])
         J_s = A @ Rtip_2.T @ Jw_2  # Define J_s to ignore rotation about n (partial orientation Jacobian)
         en = np.cross(n, nd)
-        print("SECONDARY COST: ", np.linalg.norm(en))
         wr = (wd + self.lam*en)
         xrdot_s = A @ Rtip_2.T @ wr
         qdot_s = self.weighted_inv(J_s) @ xrdot_s
@@ -268,37 +224,30 @@ class Trajectory():
         J_t = Jv_2 # both arms
         e_pos = ep(pd, ptip_2)
         xrdot_t = (vd + self.lam*e_pos)
-        print("TERTRIARY COST: ", np.linalg.norm(e_pos))
         qdot_t = self.weighted_inv(J_t) @ xrdot_t
 
         # Quaternary task -- natural arm configuration
 
         qdot_q = np.zeros(14)
-        # qdot_q = self.lam * (q_natural - qd_last)
-        # elbow natural number
-        qdot_q[3] = 20 * self.lam * (- np.pi / 2 - qd_last[3])
-        qdot_q[10] = 20 * self.lam * (- np.pi / 2 - qd_last[10])
-        qdot_q[6] = 20 * self.lam * (np.pi / 4 - qd_last[6])
-        qdot_q[13] = 20 * self.lam * (np.pi / 4 - qd_last[13])
+        qdot_q[3] = -np.pi/2 - qd_last[3]
+        qdot_q[10] = -np.pi/2 - qd_last[10]
+        qdot_q[6] = np.pi/4 - qd_last[6]
+        qdot_q[13] = np.pi/4 - qd_last[13]
+        qdot_q *= self.lam_q 
 
         # Perform the inverse kinematics to get the desired joint angles and velocities
-        # qdot_extra = self.nullspace(J_p) @ (qdot_s + self.nullspace(J_s) @ (qdot_t + self.nullspace(J_t) @ qdot_q))
-
-        print("QUATERNARY COST: ", np.linalg.norm(qdot_q))
-
-        # print('qdot_q: ', qdot_q)
-        # print('NULL SPACE qdot_q: ', self.nullspace(J_p) @ self.nullspace(J_s) @ self.nullspace(J_t) @ qdot_q)
-        print('---------------------------------')
-
-        # qdot_t += self.nullspace(J_t) @ qdot_q
-        # qdot_s += self.nullspace(J_s) @ qdot_t
-        # qddot = qdot_p + self.nullspace(J_p) @ qdot_s # + tertiary + quaternary
-        qdot_p_extra = self.nullspace(J_p) @ qdot_s
-        qdot_s_extra = self.nullspace(np.vstack((J_p, J_s))) @ qdot_t
-        qdot_t_extra = self.nullspace(np.vstack((J_p, J_s, J_t))) @ qdot_q
-        qddot = qdot_p + qdot_p_extra + qdot_s_extra + qdot_t_extra
+        qdot_extra = self.nullspace(J_p) @ qdot_s
+        qdot_extra += self.nullspace(np.vstack((J_p, J_s))) @ qdot_t
+        qdot_extra += self.nullspace(np.vstack((J_p, J_s, J_t))) @ qdot_q
+        qddot = qdot_p + qdot_extra
         qd = qd_last + dt*qddot
 
+        print("PRIMARY COST: ", np.linalg.norm(error_p))
+        print("SECONDARY COST: ", np.linalg.norm(en))
+        print("TERTRIARY COST: ", np.linalg.norm(e_pos))
+        print("QUATERNARY COST: ", np.linalg.norm(qdot_q))
+        print('---------------------------------')
+        
         return (qd, qddot, ptip_2, n)
 
 
@@ -312,7 +261,6 @@ class Trajectory():
         ''' Get the nullspace projection of J, using a weighted inverse '''
         N = (self.weighted_inv(J) @ J).shape[0]
         return np.eye(N) - self.weighted_inv(J) @ J
-
 
 
 #
