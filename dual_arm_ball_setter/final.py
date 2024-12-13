@@ -221,7 +221,7 @@ class Trajectory():
         qdot_s = self.weighted_inv(J_s) @ xrdot_s
 
         # Tertiary task -- position
-        J_t = Jv_2 # both arms
+        J_t = Jv_2 
         e_pos = ep(pd, ptip_2)
         xrdot_t = (vd + self.lam*e_pos)
         qdot_t = self.weighted_inv(J_t) @ xrdot_t
