@@ -58,15 +58,20 @@ class Trajectory():
         self.Rd_12 = Rotx(np.pi)
 
         ##################### BALL INITIALIZATION #####################
-        self.g = 2
+        self.g = 1.0
 
         #p0_ball = np.array([random.uniform(1.5, 2.5), 0.0, random.uniform(1.5, 2.5)])
         #v0_ball = np.array([random.uniform(-0.5, -1.5), random.uniform(-0.25, 0.25), random.uniform(1.5, 1.90)])
 
-        p0_ball = np.array([2.0, 0.0, 1.5])
-        v0_ball = np.array([-1.5, 0.0, 0.75]) #==========================================================
+
+        ## This works
+        p0_ball = np.array([1.5, 0.0, 1.5])
+        v0_ball = np.array([-0.7, 0.3, 0.75]) #==========================================================
         #p0_ball = np.array([0.0, 0.0, 6.0])
         #v0_ball = np.array([0.0, 0.0, 0.5])
+
+        #p0_ball = np.array([1.5, 0.0, 1.5])
+        #v0_ball = np.array([-0.67, 0.0, 0.75]) 
 
         (self.x_c, self.y_c, self.z_c) = self.p0_2
         (self.x_0, self.y_0, self.z_0) = p0_ball
@@ -147,9 +152,44 @@ class Trajectory():
 
     def evaluate(self, t, dt):
         # Trajectory generation
-        scale = 1/3 # 0 < scale <= 1
+        # scale = 1/2 # 0 < scale <= 1
+        # z_hat = np.array([0.0, 0.0, 1.0])
+        # buffer = 1.0
+        # if t < self.T * scale:
+        #     # Orient Paddle
+        #     (pd, vd) = goto(t, self.T * scale, self.p0_2, self.pball_final)
+
+        #     theta = acos(np.dot(self.n0, self.nf))
+        #     (alpha, alpha_dot) = goto(t, self.T * scale, 0.0, theta)
+        #     a_hat = np.cross(self.n0, self.nf) / sin(theta)
+        #     nd = Rotn(a_hat, alpha) @ self.n0
+        #     wd = alpha_dot * a_hat
+        # elif t <= self.T + buffer:
+        #     # Hold Paddle Till Impact
+        #     pd = self.pball_final
+        #     vd = np.zeros(3)
+        #     nd = self.nf
+        #     wd = np.zeros(3)
+        # elif t - self.T - buffer <= self.vball[2] * 2 / self.g * scale:
+        #     pd = self.pball_final
+        #     vd = np.zeros(3)
+
+        #     time_to_next_drop = self.vball[2] * 2 / self.g * scale
+        #     theta = acos(np.dot(self.nf, z_hat))
+        #     (alpha, alpha_dot) = goto(t - self.T - buffer, time_to_next_drop, 0.0, theta)
+        #     a_hat = np.cross(self.nf, z_hat) / sin(theta)
+        #     nd = Rotn(a_hat, alpha) @ self.nf
+        #     wd = alpha_dot * a_hat
+        # else:
+        #     pd = self.pball_final
+        #     vd = np.zeros(3)
+        #     nd = z_hat
+        #     wd = np.zeros(3)
+
+        # Trajectory generation
+        scale = 3/4 # 0 < scale <= 1
         z_hat = np.array([0.0, 0.0, 1.0])
-        buffer = 1.0
+        buffer = 0.75
         if t < self.T * scale:
             # Orient Paddle
             (pd, vd) = goto(t, self.T * scale, self.p0_2, self.pball_final)
@@ -186,7 +226,6 @@ class Trajectory():
         (qd, qddot, ptip_2, n) = self.ikin(dt, wd, nd, pd, vd)
         self.qd_1 = qd[self.i_1]
         self.qd_2 = qd[self.i_2]
-
         # Concatenate zeros for unused finger joints
         qd = np.concatenate((qd, np.zeros(4)))
         qddot = np.concatenate((qddot, np.zeros(4)))
@@ -202,7 +241,12 @@ class Trajectory():
             v_plane = self.vball - v_normal
             self.vball = v_plane - v_normal
             error = self.vball / np.linalg.norm(self.vball)
-            print("ERROR OF FOLLOWING IMPACT: ", np.sqrt(error[0] ** 2 + error[1] ** 2))
+            (ptip_2, _, _, _) = self.chain_2.fkin(self.qd_2)
+
+            print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            print("ERROR OF VELOCITY: ", np.sqrt(error[0] ** 2 + error[1] ** 2))
+            print("ERROR OF POSITION: ", np.linalg.norm(self.pball_final - ptip_2))
+            print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         # Otherwise, handle collision with table top
         elif -0.5 <= self.pball[0] <= 0.5 and -1 <= self.pball[1] < 1 and self.pball[2] <= 1:
             self.vball[2] *= -1
@@ -247,55 +291,57 @@ class Trajectory():
         xddot_p = np.zeros(6)
         qdot_p = self.weighted_inv(J_p) @ (xddot_p + self.lam*error_p)
 
-        '''
-        ############### SECONDARY & TERTIARY #####################
-        # Secondary task -- normal
-        J_pL = J_p[:, 0:7]
-        J_pR = J_p[:, 7:14]
-        n = Rtip_2[:,0]            # Get unit normal vector to paddle surface (x-basis vector)
-        A = np.array([[0, 1, 0], [0, 0, 1]])
-        J_s = A @ Rtip_2.T @ Jw_2  # Define J_s to ignore rotation about n (partial orientation Jacobian)
-        en = np.cross(n, nd)
-        wr = (wd + self.lam*en)
-        xrdot_s = A @ Rtip_2.T @ wr
-        J_sU = -self.weighted_inv(J_pL) @ J_pR @ self.weighted_inv(J_s[:, self.i_2])
-        J_sD = self.weighted_inv(J_s[:, self.i_2])
-        qdot_s = np.vstack((J_sU, J_sD)) @ xrdot_s
+        option = "t"
+        match option:
+            case "s":
+                ############### SECONDARY & TERTIARY #####################
+                # Secondary task -- normal
+                J_pL = J_p[:, 0:7]
+                J_pR = J_p[:, 7:14]
+                n = Rtip_2[:,0]            # Get unit normal vector to paddle surface (x-basis vector)
+                A = np.array([[0, 1, 0], [0, 0, 1]])
+                J_s = A @ Rtip_2.T @ Jw_2  # Define J_s to ignore rotation about n (partial orientation Jacobian)
+                en = np.cross(n, nd)
+                wr = (wd + self.lam*en)
+                xrdot_s = A @ Rtip_2.T @ wr
+                J_sU = -self.weighted_inv(J_pL) @ J_pR @ self.weighted_inv(J_s[:, self.i_2])
+                J_sD = self.weighted_inv(J_s[:, self.i_2])
+                qdot_s = np.vstack((J_sU, J_sD)) @ xrdot_s
 
-        # Tertiary task -- position
-        J_sL = J_s[:, 0:7]
-        J_sR = J_s[:, 7:14]
-        J_t = Jv_2
-        e_pos = ep(pd, ptip_2)
-        xrdot_t = (vd + self.lam*e_pos)
-        J_tU = - self.weighted_inv(np.vstack((J_pL, J_sL))) @ np.vstack((J_pR, J_sR)) @ self.weighted_inv(J_t[:, self.i_2])
-        J_tD = self.weighted_inv(J_t[:, self.i_2])
-        qdot_t = np.vstack((J_tU, J_tD)) @ xrdot_t
-        '''
+                # Tertiary task -- position
+                J_sL = J_s[:, 0:7]
+                J_sR = J_s[:, 7:14]
+                J_t = Jv_2
+                e_pos = ep(pd, ptip_2)
+                xrdot_t = (vd + self.lam*e_pos)
+                J_tU = - self.weighted_inv(np.vstack((J_pL, J_sL))) @ np.vstack((J_pR, J_sR)) @ self.weighted_inv(J_t[:, self.i_2])
+                J_tD = self.weighted_inv(J_t[:, self.i_2])
+                qdot_t = np.vstack((J_tU, J_tD)) @ xrdot_t
 
-        ############### SECONDARY & TERTIARY FLIPPED #####################
-        # Secondary task -- position
-        J_pL = J_p[:, 0:7]
-        J_pR = J_p[:, 7:14]
-        J_s = Jv_2
-        e_pos = ep(pd, ptip_2)
-        xrdot_s = (vd + self.lam * e_pos)
-        J_sU = -self.weighted_inv(J_pL) @ J_pR @ self.weighted_inv(J_s[:, self.i_2])
-        J_sD = self.weighted_inv(J_s[:, self.i_2])
-        qdot_s = np.vstack((J_sU, J_sD)) @ xrdot_s
+            case "t":
+                ############### SECONDARY & TERTIARY FLIPPED #####################
+                # Secondary task -- position
+                J_pL = J_p[:, 0:7]
+                J_pR = J_p[:, 7:14]
+                J_s = Jv_2
+                e_pos = ep(pd, ptip_2)
+                xrdot_s = (vd + self.lam * e_pos)
+                J_sU = -self.weighted_inv(J_pL) @ J_pR @ self.weighted_inv(J_s[:, self.i_2])
+                J_sD = self.weighted_inv(J_s[:, self.i_2])
+                qdot_s = np.vstack((J_sU, J_sD)) @ xrdot_s
 
-        # Tertiary task -- normal
-        J_sL = J_s[:, 0:7]
-        J_sR = J_s[:, 7:14]
-        n = Rtip_2[:, 0]  # Get unit normal vector to paddle surface (x-basis vector)
-        A = np.array([[0, 1, 0], [0, 0, 1]])
-        J_t = A @ Rtip_2.T @ Jw_2  # Define J_s to ignore rotation about n (partial orientation Jacobian)
-        en = np.cross(n, nd)
-        wr = (wd + self.lam * en)
-        xrdot_t = A @ Rtip_2.T @ wr
-        J_tU = - self.weighted_inv(np.vstack((J_pL, J_sL))) @ np.vstack((J_pR, J_sR)) @ self.weighted_inv(J_t[:, self.i_2])
-        J_tD = self.weighted_inv(J_t[:, self.i_2])
-        qdot_t = np.vstack((J_tU, J_tD)) @ xrdot_t
+                # Tertiary task -- normal
+                J_sL = J_s[:, 0:7]
+                J_sR = J_s[:, 7:14]
+                n = Rtip_2[:, 0]  # Get unit normal vector to paddle surface (x-basis vector)
+                A = np.array([[0, 1, 0], [0, 0, 1]])
+                J_t = A @ Rtip_2.T @ Jw_2  # Define J_s to ignore rotation about n (partial orientation Jacobian)
+                en = np.cross(n, nd)
+                wr = (wd + self.lam * en)
+                xrdot_t = A @ Rtip_2.T @ wr
+                J_tU = - self.weighted_inv(np.vstack((J_pL, J_sL))) @ np.vstack((J_pR, J_sR)) @ self.weighted_inv(J_t[:, self.i_2])
+                J_tD = self.weighted_inv(J_t[:, self.i_2])
+                qdot_t = np.vstack((J_tU, J_tD)) @ xrdot_t
 
 
 
@@ -308,9 +354,16 @@ class Trajectory():
         # Perform the inverse kinematics to get the desired joint angles and velocities
         qdot_extra = self.nullspace(J_p) @ qdot_s
         qdot_extra += self.nullspace(np.vstack((J_p, J_s))) @ qdot_t
-        #qdot_extra += self.nullspace(np.vstack((J_p, J_s, J_t))) @ qdot_q
+        # qdot_extra += self.nullspace(np.vstack((J_p, J_s, J_t))) @ qdot_q
         qddot = qdot_p + qdot_extra
         qd = qd_last + dt*qddot
+
+        # # Perform the inverse kinematics to get the desired joint angles and velocities
+        # qdot_extra = self.nullspace(J_p) @ qdot_s
+        # qdot_extra += self.nullspace(np.vstack((J_p, J_s))) @ qdot_t
+        # # qdot_extra += self.nullspace(np.vstack((J_p, J_s, J_t))) @ qdot_q
+        # qddot = qdot_p + qdot_extra
+        # qd = qd_last + dt*qddot
 
         # print("PRIMARY COST: ", np.linalg.norm(error_p))
         # print("SECONDARY COST: ", np.linalg.norm(en))
@@ -336,6 +389,7 @@ class Trajectory():
         ''' Compute the weighted inverse of J '''
         N = (J.T @ J).shape[0]
         return np.linalg.pinv(J.T @ J + self.gam**2 * np.eye(N)) @ J.T
+    
 
 
     def nullspace(self, J): 
