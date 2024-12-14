@@ -60,11 +60,11 @@ class Trajectory():
         ##################### BALL INITIALIZATION #####################
         self.g = 2
 
-        p0_ball = np.array([random.uniform(1.5, 2.5), 0.0, random.uniform(1.5, 2.5)])
-        v0_ball = np.array([random.uniform(-0.5, -1.5), random.uniform(-0.25, 0.25), random.uniform(1.5, 1.90)])
+        #p0_ball = np.array([random.uniform(1.5, 2.5), 0.0, random.uniform(1.5, 2.5)])
+        #v0_ball = np.array([random.uniform(-0.5, -1.5), random.uniform(-0.25, 0.25), random.uniform(1.5, 1.90)])
 
-        #p0_ball = np.array([2.0, 0.4, 1.5])
-        #v0_ball = np.array([-1.0, 0.0, 1.85])
+        p0_ball = np.array([2.0, 0.0, 1.5])
+        v0_ball = np.array([-1.0, 0.0, 1.85])
         #p0_ball = np.array([0.0, 0.0, 6.0])
         #v0_ball = np.array([0.0, 0.0, 0.5])
 
@@ -147,9 +147,9 @@ class Trajectory():
 
     def evaluate(self, t, dt):
         # Trajectory generation
-        scale = 3/4 # 0 < scale <= 1
+        scale = 1/4 # 0 < scale <= 1
         z_hat = np.array([0.0, 0.0, 1.0])
-        buffer = 0.75
+        buffer = 1.0
         if t < self.T * scale:
             # Orient Paddle
             (pd, vd) = goto(t, self.T * scale, self.p0_2, self.pball_final)
@@ -270,10 +270,12 @@ class Trajectory():
 
         # Quaternary task -- natural arm configuration
         qdot_q = np.zeros(14)
-        qdot_q[3] = -np.pi/2 - qd_last[3]
-        qdot_q[10] = -np.pi/2 - qd_last[10]
-        qdot_q[6] = np.pi/4 - qd_last[6]
-        qdot_q[13] = np.pi/4 - qd_last[13]
+        #qdot_q[0] = 2 * np.cos(qd_last[0]) * np.sin(qd_last[0])
+        #qdot_q[7] = 2 * np.cos(qd_last[7]) * np.sin(qd_last[7])
+        #qdot_q[3] = -1 * np.pi/2 - qd_last[3]
+        #qdot_q[10] = -1 * np.pi/2 - qd_last[10]
+        #qdot_q[6] = np.pi/4 - qd_last[6]
+        #qdot_q[13] = np.pi/4 - qd_last[13]
         qdot_q *= self.lam_q 
 
         # Perform the inverse kinematics to get the desired joint angles and velocities

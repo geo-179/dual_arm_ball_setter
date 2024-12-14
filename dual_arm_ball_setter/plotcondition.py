@@ -37,7 +37,7 @@ def plotcondition(condmsgs, t0, bagname):
     ax.plot(t, condition[:, 0])
     ax.plot(t, condition[:, 1])
     ax.plot(t, condition[:, 2])
-    ax.legend(['Primary', 'Secondary', 'Tertriary'])
+    ax.legend(['Primary', 'Secondary', 'Tertiary'])
     ax.set(ylabel='Condition Number for Jacobians of Different Tasks')
     ax.set(xlabel='Time (sec)')
     ax.set(title="Condition Number for Jacobians of Different Tasks in '%s'" % bagname)
