@@ -34,6 +34,9 @@ setup(
             'demo1 = dual_arm_ball_setter.demo1:main',
             'test_normal_task = dual_arm_ball_setter.test_normal_task:main',
             'final = dual_arm_ball_setter.final:main',
+            'plotball = dual_arm_ball_setter.plotball:main',
+            'plotcondition = dual_arm_ball_setter.plotcondition:main',
+            'plotdata = dual_arm_ball_setter.plotdata:main',
         ],
     },
 )

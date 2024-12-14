@@ -1,10 +1,11 @@
 # Import the format for the condition number message
 from std_msgs.msg import Float64
+from std_msgs.msg import String
+import json
 
 import rclpy
 import numpy as np
 from scipy.optimize import fsolve
-
 from math import pi, sin, cos, acos, atan2, sqrt, fmod, exp
 
 # Grab the utilities
@@ -26,6 +27,8 @@ class Trajectory():
         self.N_COMBINED = 14       # Total number of joints of combined system
         self.PADDLE_RADIUS = 0.25  
         self.TABLE_HEIGHT = 1.5
+        self.pub_condition = node.create_publisher(Float64, '/condition', 10)
+        self.pub_ball = node.create_publisher(String, '/ball', 10)
 
         ##################### ROBOT INITIALIZATION #####################
         # Set up the kinematic chain objects
@@ -57,11 +60,11 @@ class Trajectory():
         ##################### BALL INITIALIZATION #####################
         self.g = 2
 
-        p0_ball = np.array([random.uniform(0.0, 3.0), random.uniform(-0.5, 0.5), random.uniform(0.0, 10.0)])
-        v0_ball = np.array([random.uniform(-0.5, 0.5), random.uniform(-1.0, 1.0), random.uniform(1.0, 2.0)])
+        p0_ball = np.array([random.uniform(1.0, 3.0), random.uniform(-0.5, 0.5), random.uniform(1.5, 3.0)])
+        v0_ball = np.array([random.uniform(-0.5, -1.75), random.uniform(-0.5, 0.5), random.uniform(0.8, 2.0)])
 
-        p0_ball = np.array([1.5, 0.0, 1.5])
-        v0_ball = np.array([-1.0, 0.0, 1.25])
+        #p0_ball = np.array([2.0, 0.4, 1.5])
+        #v0_ball = np.array([-1.0, 0.0, 1.75])
         #p0_ball = np.array([0.0, 0.0, 6.0])
         #v0_ball = np.array([0.0, 0.0, 0.5])
 
@@ -69,7 +72,7 @@ class Trajectory():
         (self.x_0, self.y_0, self.z_0) = p0_ball
         (self.v0_x, self.v0_y, self.v0_z) = v0_ball
 
-        initial_guess = 100.0
+        initial_guess = 1e3
         self.T = fsolve(self.derivative_dist_paddle_to_traj, initial_guess)[0]
         self.pball_final = self.compute_ball_kin(self.T)
 
@@ -85,7 +88,19 @@ class Trajectory():
         self.aball = np.array([0.0, 0.0, -self.g])
 
         self.n0 = R0_2[:, 2]
-        self.nf = -self.vball_impact / np.linalg.norm(self.vball_impact)
+        option = 1
+        match option:
+            case 0:
+                # reflect ball's velocity
+                self.nf = - self.vball_impact / np.linalg.norm(self.vball_impact)
+            case 1:
+                # reflect to remove x-y component
+                v_before = - self.vball_impact / np.linalg.norm(self.vball_impact)
+                v_after = np.array([0.0, 0.0, 1.0])
+                self.nf = (v_after + v_before)
+                self.nf = self.nf / np.linalg.norm(self.nf)
+            case _:
+                self.nf = np.array([0.0, 0.0, 1.0])
 
 
     def compute_ball_kin(self, t):
@@ -221,17 +236,17 @@ class Trajectory():
         qdot_s = self.weighted_inv(J_s) @ xrdot_s
 
         # Tertiary task -- position
-        J_t = Jv_2 
+        J_t = Jv_2
         e_pos = ep(pd, ptip_2)
         xrdot_t = (vd + self.lam*e_pos)
         qdot_t = self.weighted_inv(J_t) @ xrdot_t
 
         # Quaternary task -- natural arm configuration
         qdot_q = np.zeros(14)
-        qdot_q[3] = -np.pi/2 - qd_last[3]
-        qdot_q[10] = -np.pi/2 - qd_last[10]
-        qdot_q[6] = np.pi/4 - qd_last[6]
-        qdot_q[13] = np.pi/4 - qd_last[13]
+        #qdot_q[3] = -np.pi/2 - qd_last[3]
+        #qdot_q[10] = -np.pi/2 - qd_last[10]
+        #qdot_q[6] = np.pi/4 - qd_last[6]
+        #qdot_q[13] = np.pi/4 - qd_last[13]
         qdot_q *= self.lam_q 
 
         # Perform the inverse kinematics to get the desired joint angles and velocities
@@ -241,11 +256,18 @@ class Trajectory():
         qddot = qdot_p + qdot_extra
         qd = qd_last + dt*qddot
 
-        print("PRIMARY COST: ", np.linalg.norm(error_p))
-        print("SECONDARY COST: ", np.linalg.norm(en))
-        print("TERTRIARY COST: ", np.linalg.norm(e_pos))
-        print("QUATERNARY COST: ", np.linalg.norm(qdot_q))
-        print('---------------------------------')
+        # print("PRIMARY COST: ", np.linalg.norm(error_p))
+        # print("SECONDARY COST: ", np.linalg.norm(en))
+        # print("TERTRIARY COST: ", np.linalg.norm(e_pos))
+        # print("QUATERNARY COST: ", np.linalg.norm(qdot_q))
+        # print('---------------------------------')
+
+        # save the condition number and velocity of ball
+        self.pub_condition.publish(Float64(data=np.linalg.cond(J_t)))
+
+        msg = String()
+        msg.data = json.dumps(list(self.vball))
+        self.pub_ball.publish(msg)
 
         return (qd, qddot, ptip_2, n)
 
