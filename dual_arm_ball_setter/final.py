@@ -64,7 +64,7 @@ class Trajectory():
         #v0_ball = np.array([random.uniform(-0.5, -1.5), random.uniform(-0.25, 0.25), random.uniform(1.5, 1.90)])
 
         p0_ball = np.array([2.0, 0.0, 1.5])
-        v0_ball = np.array([-1.0, 0.0, 1.85])
+        v0_ball = np.array([-1.5, 0.0, 0.75]) #==========================================================
         #p0_ball = np.array([0.0, 0.0, 6.0])
         #v0_ball = np.array([0.0, 0.0, 0.5])
 
@@ -147,7 +147,7 @@ class Trajectory():
 
     def evaluate(self, t, dt):
         # Trajectory generation
-        scale = 1/4 # 0 < scale <= 1
+        scale = 1/3 # 0 < scale <= 1
         z_hat = np.array([0.0, 0.0, 1.0])
         buffer = 1.0
         if t < self.T * scale:
@@ -201,6 +201,8 @@ class Trajectory():
             v_normal = (self.vball @ n) * n
             v_plane = self.vball - v_normal
             self.vball = v_plane - v_normal
+            error = self.vball / np.linalg.norm(self.vball)
+            print("ERROR OF FOLLOWING IMPACT: ", np.sqrt(error[0] ** 2 + error[1] ** 2))
         # Otherwise, handle collision with table top
         elif -0.5 <= self.pball[0] <= 0.5 and -1 <= self.pball[1] < 1 and self.pball[2] <= 1:
             self.vball[2] *= -1
@@ -245,6 +247,8 @@ class Trajectory():
         xddot_p = np.zeros(6)
         qdot_p = self.weighted_inv(J_p) @ (xddot_p + self.lam*error_p)
 
+        '''
+        ############### SECONDARY & TERTIARY #####################
         # Secondary task -- normal
         J_pL = J_p[:, 0:7]
         J_pR = J_p[:, 7:14]
@@ -267,21 +271,44 @@ class Trajectory():
         J_tU = - self.weighted_inv(np.vstack((J_pL, J_sL))) @ np.vstack((J_pR, J_sR)) @ self.weighted_inv(J_t[:, self.i_2])
         J_tD = self.weighted_inv(J_t[:, self.i_2])
         qdot_t = np.vstack((J_tU, J_tD)) @ xrdot_t
+        '''
 
-        # Quaternary task -- natural arm configuration
+        ############### SECONDARY & TERTIARY FLIPPED #####################
+        # Secondary task -- position
+        J_pL = J_p[:, 0:7]
+        J_pR = J_p[:, 7:14]
+        J_s = Jv_2
+        e_pos = ep(pd, ptip_2)
+        xrdot_s = (vd + self.lam * e_pos)
+        J_sU = -self.weighted_inv(J_pL) @ J_pR @ self.weighted_inv(J_s[:, self.i_2])
+        J_sD = self.weighted_inv(J_s[:, self.i_2])
+        qdot_s = np.vstack((J_sU, J_sD)) @ xrdot_s
+
+        # Tertiary task -- normal
+        J_sL = J_s[:, 0:7]
+        J_sR = J_s[:, 7:14]
+        n = Rtip_2[:, 0]  # Get unit normal vector to paddle surface (x-basis vector)
+        A = np.array([[0, 1, 0], [0, 0, 1]])
+        J_t = A @ Rtip_2.T @ Jw_2  # Define J_s to ignore rotation about n (partial orientation Jacobian)
+        en = np.cross(n, nd)
+        wr = (wd + self.lam * en)
+        xrdot_t = A @ Rtip_2.T @ wr
+        J_tU = - self.weighted_inv(np.vstack((J_pL, J_sL))) @ np.vstack((J_pR, J_sR)) @ self.weighted_inv(J_t[:, self.i_2])
+        J_tD = self.weighted_inv(J_t[:, self.i_2])
+        qdot_t = np.vstack((J_tU, J_tD)) @ xrdot_t
+
+
+
+        # Quaternary task -- natural shoulder configuration
         qdot_q = np.zeros(14)
-        #qdot_q[0] = 2 * np.cos(qd_last[0]) * np.sin(qd_last[0])
-        #qdot_q[7] = 2 * np.cos(qd_last[7]) * np.sin(qd_last[7])
-        #qdot_q[3] = -1 * np.pi/2 - qd_last[3]
-        #qdot_q[10] = -1 * np.pi/2 - qd_last[10]
-        #qdot_q[6] = np.pi/4 - qd_last[6]
-        #qdot_q[13] = np.pi/4 - qd_last[13]
+        #dot_q[0] = 2 * np.cos(qd_last[0]) * np.sin(qd_last[0])
+        #dot_q[7] = 2 * np.cos(qd_last[7]) * np.sin(qd_last[7])
         qdot_q *= self.lam_q 
 
         # Perform the inverse kinematics to get the desired joint angles and velocities
         qdot_extra = self.nullspace(J_p) @ qdot_s
         qdot_extra += self.nullspace(np.vstack((J_p, J_s))) @ qdot_t
-        qdot_extra += self.nullspace(np.vstack((J_p, J_s, J_t))) @ qdot_q
+        #qdot_extra += self.nullspace(np.vstack((J_p, J_s, J_t))) @ qdot_q
         qddot = qdot_p + qdot_extra
         qd = qd_last + dt*qddot
 
