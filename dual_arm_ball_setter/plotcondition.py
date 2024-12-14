@@ -4,6 +4,7 @@
 '''
 
 import rclpy
+import json
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -14,6 +15,7 @@ from rosbag2_py._storage        import StorageOptions, ConverterOptions
 from rclpy.serialization        import deserialize_message
 
 from std_msgs.msg               import Float64
+from std_msgs.msg               import String
 
 
 #
@@ -21,7 +23,7 @@ from std_msgs.msg               import Float64
 #
 def plotcondition(condmsgs, t0, bagname):
     # Process the condition messages.
-    condition = np.array([msg.data for msg in condmsgs])
+    condition = np.array([list(json.loads(msg.data)) for msg in condmsgs])
 
     # Set up time, assuming a 100Hz rate.
     N  = len(condition)
@@ -32,10 +34,13 @@ def plotcondition(condmsgs, t0, bagname):
     fig, ax = plt.subplots(1, 1)
 
     # Plot the data.
-    ax.plot(t, condition)
-    ax.set(ylabel='Condition Number')
+    ax.plot(t, condition[:, 0])
+    ax.plot(t, condition[:, 1])
+    ax.plot(t, condition[:, 2])
+    ax.legend(['Primary', 'Secondary', 'Tertriary'])
+    ax.set(ylabel='Condition Number for Jacobians of Different Tasks')
     ax.set(xlabel='Time (sec)')
-    ax.set(title="Condition Number in '%s'" % bagname)
+    ax.set(title="Condition Number for Jacobians of Different Tasks in '%s'" % bagname)
     ax.grid()
 
 
@@ -94,7 +99,7 @@ def main():
 
         # Pull out the deserialized message.
         if   topic == '/condition':
-            condmsgs.append(deserialize_message(rawdata, Float64))
+            condmsgs.append(deserialize_message(rawdata, String))
 
 
     # Process the condition number.

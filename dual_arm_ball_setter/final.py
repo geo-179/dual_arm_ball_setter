@@ -27,7 +27,7 @@ class Trajectory():
         self.N_COMBINED = 14       # Total number of joints of combined system
         self.PADDLE_RADIUS = 0.25  
         self.TABLE_HEIGHT = 1.5
-        self.pub_condition = node.create_publisher(Float64, '/condition', 10)
+        self.pub_condition = node.create_publisher(String, '/condition', 10)
         self.pub_ball = node.create_publisher(String, '/ball', 10)
 
         ##################### ROBOT INITIALIZATION #####################
@@ -60,11 +60,11 @@ class Trajectory():
         ##################### BALL INITIALIZATION #####################
         self.g = 2
 
-        p0_ball = np.array([random.uniform(1.0, 3.0), random.uniform(-0.5, 0.5), random.uniform(1.5, 3.0)])
-        v0_ball = np.array([random.uniform(-0.5, -1.75), random.uniform(-0.5, 0.5), random.uniform(0.8, 2.0)])
+        p0_ball = np.array([random.uniform(1.5, 2.5), 0.0, random.uniform(1.5, 2.5)])
+        v0_ball = np.array([random.uniform(-0.5, -1.5), random.uniform(-0.25, 0.25), random.uniform(1.5, 1.90)])
 
         #p0_ball = np.array([2.0, 0.4, 1.5])
-        #v0_ball = np.array([-1.0, 0.0, 1.75])
+        #v0_ball = np.array([-1.0, 0.0, 1.85])
         #p0_ball = np.array([0.0, 0.0, 6.0])
         #v0_ball = np.array([0.0, 0.0, 0.5])
 
@@ -145,11 +145,13 @@ class Trajectory():
                 'panda_2_joint6',
                 'panda_2_joint7']
 
-
     def evaluate(self, t, dt):
         # Trajectory generation
-        scale = 1/3
+        scale = 3/4 # 0 < scale <= 1
+        z_hat = np.array([0.0, 0.0, 1.0])
+        buffer = 0.75
         if t < self.T * scale:
+            # Orient Paddle
             (pd, vd) = goto(t, self.T * scale, self.p0_2, self.pball_final)
 
             theta = acos(np.dot(self.n0, self.nf))
@@ -157,11 +159,28 @@ class Trajectory():
             a_hat = np.cross(self.n0, self.nf) / sin(theta)
             nd = Rotn(a_hat, alpha) @ self.n0
             wd = alpha_dot * a_hat
+        elif t <= self.T + buffer:
+            # Hold Paddle Till Impact
+            pd = self.pball_final
+            vd = np.zeros(3)
+            nd = self.nf
+            wd = np.zeros(3)
+        elif t - self.T - buffer <= self.vball[2] * 2 / self.g * scale:
+            pd = self.pball_final
+            vd = np.zeros(3)
+
+            time_to_next_drop = self.vball[2] * 2 / self.g
+            theta = acos(np.dot(self.nf, z_hat))
+            (alpha, alpha_dot) = goto(t - self.T - buffer, time_to_next_drop * scale, 0.0, theta)
+            a_hat = np.cross(self.nf, z_hat) / sin(theta)
+            nd = Rotn(a_hat, alpha) @ self.nf
+            wd = alpha_dot * a_hat
         else:
             pd = self.pball_final
             vd = np.zeros(3)
-            nd = -self.vball_impact / np.linalg.norm(self.vball_impact)
+            nd = z_hat
             wd = np.zeros(3)
+
 
         # Compute inverse kinematics
         (qd, qddot, ptip_2, n) = self.ikin(dt, wd, nd, pd, vd)
@@ -227,26 +246,34 @@ class Trajectory():
         qdot_p = self.weighted_inv(J_p) @ (xddot_p + self.lam*error_p)
 
         # Secondary task -- normal
+        J_pL = J_p[:, 0:7]
+        J_pR = J_p[:, 7:14]
         n = Rtip_2[:,0]            # Get unit normal vector to paddle surface (x-basis vector)
         A = np.array([[0, 1, 0], [0, 0, 1]])
         J_s = A @ Rtip_2.T @ Jw_2  # Define J_s to ignore rotation about n (partial orientation Jacobian)
         en = np.cross(n, nd)
         wr = (wd + self.lam*en)
         xrdot_s = A @ Rtip_2.T @ wr
-        qdot_s = self.weighted_inv(J_s) @ xrdot_s
+        J_sU = -self.weighted_inv(J_pL) @ J_pR @ self.weighted_inv(J_s[:, self.i_2])
+        J_sD = self.weighted_inv(J_s[:, self.i_2])
+        qdot_s = np.vstack((J_sU, J_sD)) @ xrdot_s
 
         # Tertiary task -- position
+        J_sL = J_s[:, 0:7]
+        J_sR = J_s[:, 7:14]
         J_t = Jv_2
         e_pos = ep(pd, ptip_2)
         xrdot_t = (vd + self.lam*e_pos)
-        qdot_t = self.weighted_inv(J_t) @ xrdot_t
+        J_tU = - self.weighted_inv(np.vstack((J_pL, J_sL))) @ np.vstack((J_pR, J_sR)) @ self.weighted_inv(J_t[:, self.i_2])
+        J_tD = self.weighted_inv(J_t[:, self.i_2])
+        qdot_t = np.vstack((J_tU, J_tD)) @ xrdot_t
 
         # Quaternary task -- natural arm configuration
         qdot_q = np.zeros(14)
-        #qdot_q[3] = -np.pi/2 - qd_last[3]
-        #qdot_q[10] = -np.pi/2 - qd_last[10]
-        #qdot_q[6] = np.pi/4 - qd_last[6]
-        #qdot_q[13] = np.pi/4 - qd_last[13]
+        qdot_q[3] = -np.pi/2 - qd_last[3]
+        qdot_q[10] = -np.pi/2 - qd_last[10]
+        qdot_q[6] = np.pi/4 - qd_last[6]
+        qdot_q[13] = np.pi/4 - qd_last[13]
         qdot_q *= self.lam_q 
 
         # Perform the inverse kinematics to get the desired joint angles and velocities
@@ -263,7 +290,11 @@ class Trajectory():
         # print('---------------------------------')
 
         # save the condition number and velocity of ball
-        self.pub_condition.publish(Float64(data=np.linalg.cond(J_t)))
+        msg = String()
+        msg.data = json.dumps([np.linalg.cond(J_p),
+                               np.linalg.cond(np.vstack((J_sU, J_sD))),
+                               np.linalg.cond(np.vstack((J_tU, J_tD)))])
+        self.pub_condition.publish(msg)
 
         msg = String()
         msg.data = json.dumps(list(self.vball))

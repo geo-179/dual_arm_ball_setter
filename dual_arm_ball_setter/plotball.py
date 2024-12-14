@@ -22,9 +22,6 @@ from std_msgs.msg               import String
 #
 def plotball(condmsgs, t0, bagname):
     # Process the ball messages.
-    msg = condmsgs[1]
-    print(msg.data)
-    print(json.loads(msg.data))
     ball = np.array([list(json.loads(msg.data)) for msg in condmsgs])
 
     # Set up time, assuming a 100Hz rate.
