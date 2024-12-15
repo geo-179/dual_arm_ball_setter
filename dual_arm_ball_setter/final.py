@@ -29,6 +29,7 @@ class Trajectory():
         self.TABLE_HEIGHT = 1.5
         self.pub_condition = node.create_publisher(String, '/condition', 10)
         self.pub_ball = node.create_publisher(String, '/ball', 10)
+        self.flag = False
 
         ##################### ROBOT INITIALIZATION #####################
         # Set up the kinematic chain objects
@@ -42,8 +43,10 @@ class Trajectory():
         self.i_1 = indexlist(0, self.N_ARM)
         self.i_2 = indexlist(self.N_ARM, self.N_ARM)
 
-        self.qd_1 = np.array([1.37824081, 1.01533737, -0.11654914, 1.55366408, 0.10457677, 0.83709106, 0.91701575])
-        self.qd_2 = np.array([0.98413218, 0.85909937, -2.66924646, -2.16988993, -2.70452348, 3.13046597, -2.41125022])
+        self.qd_1 = np.array([1.83440752, -0.92643959, -0.18857625, -2.16194522,  0.18794602,  2.79983044, 0.45735174])
+        self.qd_2 = np.array([-1.41122959, -0.91086732, -0.13188468, -2.15150518,  0.38338125, 2.7772215, 0.31997865])
+        self.q_goal = np.concatenate((self.qd_1.copy(), self.qd_2.copy()))
+
         self.qddot_1 = np.radians(np.zeros(self.N_ARM))
         self.qddot_2 = np.radians(np.zeros(self.N_ARM))
         (p0_2, R0_2, _, _) = self.chain_2.fkin(self.qd_2)
@@ -62,15 +65,24 @@ class Trajectory():
 
         #p0_ball = np.array([random.uniform(1.5, 2.5), 0.0, random.uniform(1.5, 2.5)])
         #v0_ball = np.array([random.uniform(-0.5, -1.5), random.uniform(-0.25, 0.25), random.uniform(1.5, 1.90)])
+        
+        # match case selection
+        self.task_priority = "normal"
+        self.quaternary = True
+        ball_traj = 0 # 1 = singular; 0 = in workspace
+        option = 1     # 1 = cancel x and y; 0 = align with velocity
+
+        match ball_traj:
+            case 0:
+                ## Lands in comfortable location
+                p0_ball = np.array([1.5, 0.0, 1.5])
+                v0_ball = np.array([-1.0, 0.0, 0.85])
+            case 1:
+                ## Lands near singularity
+                p0_ball = np.array([1.5, 0.0, 1.5])
+                v0_ball = np.array([-0.55, 0.0, 0.85])
 
 
-        ## Lands near singularity
-        # p0_ball = np.array([1.5, 0.0, 1.5])
-        # v0_ball = np.array([-0.7, 0.3, 0.75])
-
-        ## Lands in comfortable location
-        p0_ball = np.array([1.5, 0.0, 1.5])
-        v0_ball = np.array([-1.0, 0.0, 0.8])
 
         (self.x_c, self.y_c, self.z_c) = self.p0_2
         (self.x_0, self.y_0, self.z_0) = p0_ball
@@ -93,7 +105,6 @@ class Trajectory():
 
         self.n0 = R0_2[:, 2]
 
-        option = 1
         match option:
             case 0:
                 # reflect ball's velocity
@@ -153,44 +164,11 @@ class Trajectory():
 
     def evaluate(self, t, dt):
         # Trajectory generation
-        # scale = 1/2 # 0 < scale <= 1
-        # z_hat = np.array([0.0, 0.0, 1.0])
-        # buffer = 1.0
-        # if t < self.T * scale:
-        #     # Orient Paddle
-        #     (pd, vd) = goto(t, self.T * scale, self.p0_2, self.pball_final)
-
-        #     theta = acos(np.dot(self.n0, self.nf))
-        #     (alpha, alpha_dot) = goto(t, self.T * scale, 0.0, theta)
-        #     a_hat = np.cross(self.n0, self.nf) / sin(theta)
-        #     nd = Rotn(a_hat, alpha) @ self.n0
-        #     wd = alpha_dot * a_hat
-        # elif t <= self.T + buffer:
-        #     # Hold Paddle Till Impact
-        #     pd = self.pball_final
-        #     vd = np.zeros(3)
-        #     nd = self.nf
-        #     wd = np.zeros(3)
-        # elif t - self.T - buffer <= self.vball[2] * 2 / self.g * scale:
-        #     pd = self.pball_final
-        #     vd = np.zeros(3)
-
-        #     time_to_next_drop = self.vball[2] * 2 / self.g * scale
-        #     theta = acos(np.dot(self.nf, z_hat))
-        #     (alpha, alpha_dot) = goto(t - self.T - buffer, time_to_next_drop, 0.0, theta)
-        #     a_hat = np.cross(self.nf, z_hat) / sin(theta)
-        #     nd = Rotn(a_hat, alpha) @ self.nf
-        #     wd = alpha_dot * a_hat
-        # else:
-        #     pd = self.pball_final
-        #     vd = np.zeros(3)
-        #     nd = z_hat
-        #     wd = np.zeros(3)
-
-        # Trajectory generation
         scale = 1/2 # 0 < scale <= 1
         z_hat = np.array([0.0, 0.0, 1.0])
         buffer = 1
+        buffer2 = 5
+        global pd, vd, wd, nd
         if t < self.T * scale:
             # Orient Paddle
             (pd, vd) = goto(t, self.T * scale, self.p0_2, self.pball_final)
@@ -217,12 +195,14 @@ class Trajectory():
             a_hat = np.cross(self.nf, z_hat) / sin(theta)
             nd = Rotn(a_hat, alpha) @ self.nf
             wd = alpha_dot * a_hat
-        else:
+        elif t > self.T + buffer + self.vball[2] * 2 / self.g * scale and t < self.T + buffer + self.vball[2] * 2 / self.g * scale + buffer2:
             # Hold still once norm is aligned
             pd = self.pball_final
             vd = np.zeros(3)
             nd = z_hat
             wd = np.zeros(3)
+        elif t > self.T + buffer + self.vball[2] * 2 / self.g * scale + buffer2:
+            self.flag = False
 
 
         # Compute inverse kinematics
@@ -296,8 +276,7 @@ class Trajectory():
         qdot_p = self.weighted_inv(J_p) @ (xddot_p + self.lam*error_p)
 
         # Choose between prioritizing the normal vs positional task
-        option = "normal"
-        match option:
+        match self.task_priority:
             case "normal":
                 ############### Normal then position #####################
                 # Secondary task -- normal
@@ -350,18 +329,24 @@ class Trajectory():
 
 
         # Quaternary task -- natural shoulder configuration
-        qdot_q = np.zeros(14)
-        # dot_q[0] = 2 * np.cos(qd_last[0]) * np.sin(qd_last[0])
-        # dot_q[7] = 2 * np.cos(qd_last[7]) * np.sin(qd_last[7])
-        # qdot_q *= self.lam_q 
+        qdot_q = np.zeros(14)   
+        qdot_q = self.lam_q*(self.q_goal - qd_last) 
 
         # Perform the inverse kinematics to get the desired joint angles and velocities
+
         qdot_extra = self.nullspace(J_p) @ qdot_s
         qdot_extra += self.nullspace(np.vstack((J_p, J_s))) @ qdot_t
-        qdot_extra += self.nullspace(np.vstack((J_p, J_s, J_t))) @ qdot_q
-        qddot = qdot_p + qdot_extra
-        qd = qd_last + dt*qddot
+        if self.quaternary:
+            qdot_extra += self.nullspace(np.vstack((J_p, J_s, J_t))) @ qdot_q
+        
+        #xrdot_stack = np.concatenate((xddot_p + self.lam*error_p, A @ Rtip_2.T @ wr, (vd + self.lam*e_pos)))
+        J_stack = np.vstack((J_p, J_s, J_t))
 
+        #qddot = self.weighted_inv(J_stack) @ xrdot_stack
+        #qd = qd_last + dt*qddot
+
+        qddot = qdot_p + qdot_extra
+        qd = qd_last + dt*(qddot if not self.flag else np.zeros(14))
         # print("PRIMARY COST: ", np.linalg.norm(error_p))
         # print("SECONDARY COST: ", np.linalg.norm(en))
         # print("TERTRIARY COST: ", np.linalg.norm(e_pos))
@@ -372,7 +357,8 @@ class Trajectory():
         msg = String()
         msg.data = json.dumps([np.linalg.cond(J_p),
                                np.linalg.cond(np.vstack((J_sU, J_sD))),
-                               np.linalg.cond(np.vstack((J_tU, J_tD)))])
+                               np.linalg.cond(np.vstack((J_tU, J_tD))), 
+                               np.linalg.cond(J_stack)])
         self.pub_condition.publish(msg)
 
         msg = String()

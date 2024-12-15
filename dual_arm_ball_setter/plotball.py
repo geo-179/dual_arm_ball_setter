@@ -39,7 +39,6 @@ def plotball(condmsgs, t0, bagname):
     ax.legend(['x component', 'y component', 'z component'])
     ax.set(ylabel='Velocity of Ball Components')
     ax.set(xlabel='Time (sec)')
-    ax.set(title="Velocity of Ball in '%s'" % bagname)
     ax.grid()
 
 
