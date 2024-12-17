@@ -5,14 +5,15 @@ This project involves using two **Emika Franka** robotic arms and a paddle to im
 We have implemented a **task hierarchy** to ensure that the robot can prioritize and execute tasks effectively, enabling reliable performance in volleyball setting actions. The project utilizes trajectory utilities imported from other projects, though they can be replaced or updated when pulling the repository to run the system.
 
 ## Video Demo
-![Project Demo](./assets/videos/dual-arm-ball-setter-demo.mp4)
+![Project Demo](https://github.com/geo-179/dual_arm_ball_setter/raw/main/assets/videos/dual-arm-ball-setter-demo.mp4)
 
 You can watch our full demonstration video showcasing the dual-arm volleyball setting action, including different scenarios and successful implementations of the task hierarchy system.
 
 ## Technical Documentation
 For detailed information about the system architecture, implementation details, and experimental results, please refer to our technical report:
 
-[Read Full Technical Report](./docs/dual-arm-ball-setter-report.pdf)
+[View Technical Report](https://github.com/geo-179/dual_arm_ball_setter/raw/main/docs/dual-arm-ball-setter-report.pdf)
+
 
 The technical report includes:
 - Detailed system architecture
