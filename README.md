@@ -1,6 +1,6 @@
 # Dual Arm Volleyball Setting Robotics Project
 ## TK Lee, Gio Huh, Deon Petrizzo
-This project involves using two **Emika Franka** robotic arms and a paddle to imitate a volleyball setting action. The goal is to achieve a reliable and dynamic setting motion, similar to that in volleyball, using **ROS 2 (Humble)**.
+This project involves using two **Emika Franka** robotic arms and a paddle (14 DOF) to imitate a volleyball setting action. The goal is to achieve a reliable and dynamic setting motion, similar to that in volleyball, using **ROS 2 (Humble)**.
 
 We have implemented a **task hierarchy** to ensure that the robot can prioritize and execute tasks effectively, enabling reliable performance in volleyball setting actions. The project utilizes trajectory utilities imported from other projects, though they can be replaced or updated when pulling the repository to run the system.
 
