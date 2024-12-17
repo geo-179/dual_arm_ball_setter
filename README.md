@@ -23,6 +23,7 @@ The technical report includes:
 
 ## Getting Started
 To run the project, follow these steps:
-Clone the project repository to your workspace and build the project in ROS 2. Then, run the following command:
+ - Clone the project repository to your workspace and build the project in ROS 2.
+ - Run the following command:
 ```bash
 ros2 launch dual_arm_ball_setter final.launch.py
