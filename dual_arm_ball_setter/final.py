@@ -35,7 +35,6 @@ class Trajectory():
         # Set up the kinematic chain objects
         self.chain_1 = KinematicChain(node, 'base', 'panda_1_hand', self.jointnames_1())
         self.chain_2 = KinematicChain(node, 'base', 'panda_2_paddle', self.jointnames_2())
-        self.chain_to_hand_2 = KinematicChain(node, 'base', 'panda_2_hand', self.jointnames_2())
 
         self.Jblank = np.zeros((3, self.N_COMBINED))
 
@@ -53,7 +52,7 @@ class Trajectory():
         self.p0_2 = p0_2
 
         self.lam = 20
-        self.lam_q = 10  # set lower lamda for q, so it doesn't interfere with the other tasks
+        self.lam_q = 10  # Set a lower lamda for for the quaternary task, so it doesn't interfere with the other tasks
         self.gam = 0.1
 
         # Desired position and orientaion of chain1 tip in coordinates of and relative to chain2 tip
@@ -62,27 +61,22 @@ class Trajectory():
 
         ##################### BALL INITIALIZATION #####################
         self.g = 1.0
-
-        #p0_ball = np.array([random.uniform(1.5, 2.5), 0.0, random.uniform(1.5, 2.5)])
-        #v0_ball = np.array([random.uniform(-0.5, -1.5), random.uniform(-0.25, 0.25), random.uniform(1.5, 1.90)])
         
-        # match case selection
+        # Match case selection
         self.task_priority = "normal"
         self.quaternary = True
-        ball_traj = 0 # 1 = singular; 0 = in workspace
+        ball_traj = 0  # 1 = singular; 0 = in workspace
         option = 1     # 1 = cancel x and y; 0 = align with velocity
 
         match ball_traj:
             case 0:
-                ## Lands in comfortable location
+                # Lands in comfortable location
                 p0_ball = np.array([1.5, 0.0, 1.5])
                 v0_ball = np.array([-1.0, 0.0, 0.85])
             case 1:
-                ## Lands near singularity
+                # Lands near singularity
                 p0_ball = np.array([1.5, 0.0, 1.5])
                 v0_ball = np.array([-0.55, 0.0, 0.85])
-
-
 
         (self.x_c, self.y_c, self.z_c) = self.p0_2
         (self.x_0, self.y_0, self.z_0) = p0_ball
@@ -92,7 +86,7 @@ class Trajectory():
         self.T = fsolve(self.derivative_dist_paddle_to_traj, initial_guess)[0]
         self.pball_final = self.compute_ball_kin(self.T)
 
-        # Reject solutions below table
+        # Reject solutions below the table
         if self.pball_final[2] < self.TABLE_HEIGHT:
             self.T = max(np.roots([-1/2*self.g, self.v0_z, self.z_0 - self.TABLE_HEIGHT]))
             self.pball_final = self.compute_ball_kin(self.T)
@@ -103,41 +97,40 @@ class Trajectory():
         self.vball = v0_ball
         self.aball = np.array([0.0, 0.0, -self.g])
 
-        self.n0 = R0_2[:, 2]
+        self.n0 = R0_2[:, 2] # Initialize paddle normal
 
         match option:
             case 0:
                 # reflect ball's velocity
-                self.nf = - self.vball_impact / np.linalg.norm(self.vball_impact)
+                self.nf = -self.vball_impact / np.linalg.norm(self.vball_impact)
             case 1:
                 # reflect to remove x-y component
-                v_before = - self.vball_impact / np.linalg.norm(self.vball_impact)
+                v_before = -self.vball_impact / np.linalg.norm(self.vball_impact)
                 v_after = np.array([0.0, 0.0, 1.0])
-                self.nf = (v_after + v_before)
+                self.nf = v_after + v_before
                 self.nf = self.nf / np.linalg.norm(self.nf)
             case _:
                 self.nf = np.array([0.0, 0.0, 1.0])
 
 
     def compute_ball_kin(self, t):
-        return np.array([self.x_0 + self.v0_x * self.T,
-                         self.y_0 + self.v0_y * self.T,
-                         self.z_0 + self.v0_z * self.T - 1/2*self.g*self.T**2])
+        ''' Solve the position of the ball at time t '''
+        return np.array([self.x_0 + self.v0_x*self.T,
+                         self.y_0 + self.v0_y*self.T,
+                         self.z_0 + self.v0_z*self.T - 0.5*self.g*self.T**2])
 
 
     def derivative_dist_paddle_to_traj(self, t):
-        x_comp = 2 * (self.x_0 + self.v0_x * t - self.x_c) * self.v0_x
-        y_comp = 2 * (self.y_0 + self.v0_y * t - self.y_c) * self.v0_y
-        z_comp = 2 * (self.z_0 + self.v0_z * t - 1/2 * self.g * t ** 2 - self.z_c) * (self.v0_z - self.g * t)
+        ''' Compute derivative of scalar distance between the paddle and ball for Newton Raphson optimization '''
+        x_comp = 2*(self.x_0 + self.v0_x*t - self.x_c)*self.v0_x
+        y_comp = 2*(self.y_0 + self.v0_y*t - self.y_c)*self.v0_y
+        z_comp = 2*(self.z_0 + self.v0_z*t - 0.5*self.g*t**2 - self.z_c)*(self.v0_z - self.g*t)
         return x_comp + y_comp + z_comp
      
 
     def jointnames(self):
         ''' Combined joint names for both arms '''
-        return self.jointnames_1() + self.jointnames_2() + ['panda_1_finger_joint1',
-                                      'panda_1_finger_joint2', 
-                                      'panda_2_finger_joint1',
-                                      'panda_2_finger_joint2']
+        return self.jointnames_1() + self.jointnames_2() + self.jointnames_3()
 
 
     def jointnames_1(self):
@@ -162,17 +155,25 @@ class Trajectory():
                 'panda_2_joint7']
 
 
+    def jointnames_3(self): 
+        ''' Declare joint names for (unused) finger joints '''
+        return ['panda_1_finger_joint1',
+                'panda_1_finger_joint2', 
+                'panda_2_finger_joint1',
+                'panda_2_finger_joint2']
+
+
     def evaluate(self, t, dt):
-        # Trajectory generation
-        scale = 1/2 # 0 < scale <= 1
+        scale = 0.5  # 0 < scale <= 1
         z_hat = np.array([0.0, 0.0, 1.0])
         buffer = 1
         buffer2 = 5
         global pd, vd, wd, nd
+
+        # Trajectory generation
         if t < self.T * scale:
             # Orient Paddle
             (pd, vd) = goto(t, self.T * scale, self.p0_2, self.pball_final)
-
             theta = acos(np.dot(self.n0, self.nf))
             (alpha, alpha_dot) = goto(t, self.T * scale, 0.0, theta)
             a_hat = np.cross(self.n0, self.nf) / sin(theta)
@@ -184,26 +185,25 @@ class Trajectory():
             vd = np.zeros(3)
             nd = self.nf
             wd = np.zeros(3)
-        elif t - self.T - buffer <= self.vball[2] * 2 / self.g * scale:
+        elif t <= self.T + buffer + self.vball[2] * 2 / self.g * scale:
             # Allign paddle norm with z-axis
             pd = self.pball_final
             vd = np.zeros(3)
-
             time_to_next_drop = self.vball[2] * 2 / self.g
             theta = acos(np.dot(self.nf, z_hat))
             (alpha, alpha_dot) = goto(t - self.T - buffer, time_to_next_drop * scale, 0.0, theta)
             a_hat = np.cross(self.nf, z_hat) / sin(theta)
             nd = Rotn(a_hat, alpha) @ self.nf
             wd = alpha_dot * a_hat
-        elif t > self.T + buffer + self.vball[2] * 2 / self.g * scale and t < self.T + buffer + self.vball[2] * 2 / self.g * scale + buffer2:
+        elif (t > self.T + buffer + self.vball[2] * 2 / self.g * scale 
+                and t < self.T + buffer + buffer2 + self.vball[2] * 2 / self.g * scale):
             # Hold still once norm is aligned
             pd = self.pball_final
             vd = np.zeros(3)
             nd = z_hat
             wd = np.zeros(3)
-        elif t > self.T + buffer + self.vball[2] * 2 / self.g * scale + buffer2:
+        else:
             self.flag = False
-
 
         # Compute inverse kinematics
         (qd, qddot, ptip_2, n) = self.ikin(dt, wd, nd, pd, vd)
@@ -224,13 +224,6 @@ class Trajectory():
             v_normal = (self.vball @ n) * n
             v_plane = self.vball - v_normal
             self.vball = v_plane - v_normal
-            error = self.vball / np.linalg.norm(self.vball)
-            (ptip_2, _, _, _) = self.chain_2.fkin(self.qd_2)
-
-            print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-            print("ERROR OF VELOCITY: ", np.sqrt(error[0] ** 2 + error[1] ** 2))
-            print("ERROR OF POSITION: ", np.linalg.norm(self.pball_final - ptip_2))
-            print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         # Otherwise, handle collision with table top
         elif -0.5 <= self.pball[0] <= 0.5 and -1 <= self.pball[1] < 1 and self.pball[2] <= 1:
             self.vball[2] *= -1
@@ -249,6 +242,7 @@ class Trajectory():
         (ptip_1, Rtip_1, Jvbar_1, Jwbar_1) = self.chain_1.fkin(self.qd_1)
         (ptip_2, Rtip_2, Jvbar_2, Jwbar_2) = self.chain_2.fkin(self.qd_2)
         qd_last = np.concatenate((self.qd_1, self.qd_2))
+        n = Rtip_2[:, 0]
 
         # Expand the jacobians
         Jv_1 = self.Jblank.copy()  
@@ -267,93 +261,66 @@ class Trajectory():
         Jv_12 = Rtip_2.T @ (Jv_1 - Jv_2 + crossmat(ptip_1 - ptip_2) @ Jw_2)
         Jw_12 = Rtip_2.T @ (Jw_1 - Jw_2)
 
+
         # Primary task -- keeping hands together
         J_p = np.vstack((Jv_12, Jw_12))
         ep_12 = ep(self.pd_12, p_12)
         eR_12 = eR(self.Rd_12, R_12)
         error_p = np.concatenate((ep_12, eR_12))
-        xddot_p = np.zeros(6)
-        qdot_p = self.weighted_inv(J_p) @ (xddot_p + self.lam*error_p)
+        xrdot_p = self.lam*error_p
+        qdot_p = self.weighted_inv(J_p) @ xrdot_p
+
+
+        def compute_normal_task(J_prev): 
+            J_prev_L = J_prev[:, 0:7]
+            J_prev_R = J_prev[:, 7:14]       
+            A = np.array([[0, 1, 0], [0, 0, 1]])
+            en = np.cross(n, nd)
+            wr = (wd + self.lam*en)
+            xrdot_norm = A @ Rtip_2.T @ wr
+            J_norm = A @ Rtip_2.T @ Jw_2 
+            return (xrdot_norm, J_norm, J_prev_L, J_prev_R)
+
+        def compute_position_task(J_prev):
+            J_prev_L = J_prev[:, 0:7]
+            J_prev_R = J_prev[:, 7:14]
+            e_pos = ep(pd, ptip_2)
+            xrdot_pos = (vd + self.lam*e_pos)
+            J_pos = Jv_2
+            return (xrdot_pos, J_pos, J_prev_L, J_prev_R)
 
         # Choose between prioritizing the normal vs positional task
         match self.task_priority:
             case "normal":
-                ############### Normal then position #####################
-                # Secondary task -- normal
-                J_pL = J_p[:, 0:7]
-                J_pR = J_p[:, 7:14]
-                n = Rtip_2[:,0]            # Get unit normal vector to paddle surface (x-basis vector)
-                A = np.array([[0, 1, 0], [0, 0, 1]])
-                J_s = A @ Rtip_2.T @ Jw_2  # Define J_s to ignore rotation about n (partial orientation Jacobian)
-                en = np.cross(n, nd)
-                wr = (wd + self.lam*en)
-                xrdot_s = A @ Rtip_2.T @ wr
-                J_sU = -self.weighted_inv(J_pL) @ J_pR @ self.weighted_inv(J_s[:, self.i_2])
-                J_sD = self.weighted_inv(J_s[:, self.i_2])
-                qdot_s = np.vstack((J_sU, J_sD)) @ xrdot_s
-
-                # Tertiary task -- position
-                J_sL = J_s[:, 0:7]
-                J_sR = J_s[:, 7:14]
-                J_t = Jv_2
-                e_pos = ep(pd, ptip_2)
-                xrdot_t = (vd + self.lam*e_pos)
-                J_tU = - self.weighted_inv(np.vstack((J_pL, J_sL))) @ np.vstack((J_pR, J_sR)) @ self.weighted_inv(J_t[:, self.i_2])
-                J_tD = self.weighted_inv(J_t[:, self.i_2])
-                qdot_t = np.vstack((J_tU, J_tD)) @ xrdot_t
+                (xrdot_s, J_s, J_pL, J_pR) = compute_normal_task(J_p)
+                (xrdot_t, J_t, J_sL, J_sR) = compute_position_task(J_s)
 
             case "position":
-                ############### Position then normal #####################
-                # Secondary task -- position
-                J_pL = J_p[:, 0:7]
-                J_pR = J_p[:, 7:14]
-                J_s = Jv_2
-                e_pos = ep(pd, ptip_2)
-                xrdot_s = (vd + self.lam * e_pos)
-                J_sU = -self.weighted_inv(J_pL) @ J_pR @ self.weighted_inv(J_s[:, self.i_2])
-                J_sD = self.weighted_inv(J_s[:, self.i_2])
-                qdot_s = np.vstack((J_sU, J_sD)) @ xrdot_s
+                (xrdot_s, J_s, J_pL, J_pR) = compute_position_task(J_p)
+                (xrdot_t, J_t, J_sL, J_sR) = compute_normal_task(J_s)
 
-                # Tertiary task -- normal
-                J_sL = J_s[:, 0:7]
-                J_sR = J_s[:, 7:14]
-                n = Rtip_2[:, 0]  # Get unit normal vector to paddle surface (x-basis vector)
-                A = np.array([[0, 1, 0], [0, 0, 1]])
-                J_t = A @ Rtip_2.T @ Jw_2  # Define J_s to ignore rotation about n (partial orientation Jacobian)
-                en = np.cross(n, nd)
-                wr = (wd + self.lam * en)
-                xrdot_t = A @ Rtip_2.T @ wr
-                J_tU = - self.weighted_inv(np.vstack((J_pL, J_sL))) @ np.vstack((J_pR, J_sR)) @ self.weighted_inv(J_t[:, self.i_2])
-                J_tD = self.weighted_inv(J_t[:, self.i_2])
-                qdot_t = np.vstack((J_tU, J_tD)) @ xrdot_t
+        J_sU = -self.weighted_inv(J_pL) @ J_pR @ self.weighted_inv(J_s[:, self.i_2])
+        J_sD = self.weighted_inv(J_s[:, self.i_2])
+        qdot_s = np.vstack((J_sU, J_sD)) @ xrdot_s
+
+        J_tU = - self.weighted_inv(np.vstack((J_pL, J_sL))) @ np.vstack((J_pR, J_sR)) @ self.weighted_inv(J_t[:, self.i_2])
+        J_tD = self.weighted_inv(J_t[:, self.i_2])
+        qdot_t = np.vstack((J_tU, J_tD)) @ xrdot_t
 
 
-        # Quaternary task -- natural shoulder configuration
-        qdot_q = np.zeros(14)   
+        # Quaternary task -- natural joint configuration
         qdot_q = self.lam_q*(self.q_goal - qd_last) 
 
         # Perform the inverse kinematics to get the desired joint angles and velocities
-
         qdot_extra = self.nullspace(J_p) @ qdot_s
         qdot_extra += self.nullspace(np.vstack((J_p, J_s))) @ qdot_t
         if self.quaternary:
             qdot_extra += self.nullspace(np.vstack((J_p, J_s, J_t))) @ qdot_q
-        
-        #xrdot_stack = np.concatenate((xddot_p + self.lam*error_p, A @ Rtip_2.T @ wr, (vd + self.lam*e_pos)))
-        J_stack = np.vstack((J_p, J_s, J_t))
-
-        #qddot = self.weighted_inv(J_stack) @ xrdot_stack
-        #qd = qd_last + dt*qddot
-
         qddot = qdot_p + qdot_extra
         qd = qd_last + dt*(qddot if not self.flag else np.zeros(14))
-        # print("PRIMARY COST: ", np.linalg.norm(error_p))
-        # print("SECONDARY COST: ", np.linalg.norm(en))
-        # print("TERTRIARY COST: ", np.linalg.norm(e_pos))
-        # print("QUATERNARY COST: ", np.linalg.norm(qdot_q))
-        # print('---------------------------------')
 
         # Save the condition number and velocity of the ball
+        J_stack = np.vstack((J_p, J_s, J_t))
         msg = String()
         msg.data = json.dumps([np.linalg.cond(J_p),
                                np.linalg.cond(np.vstack((J_sU, J_sD))),
