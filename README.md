@@ -20,6 +20,10 @@ For detailed information about the system architecture, implementation details, 
 The technical report includes:
 - Detailed system architecture
 - Task hierarchy implementation
+    1. Paddle-Arm Coupling
+    2. Orientation of Paddle Normal
+    3. Position to Point of Impact
+    4. Natural Position of Dual Arms
 - Experimental results and analysis
 - Future improvements and recommendations
 
