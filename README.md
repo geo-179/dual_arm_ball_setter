@@ -5,8 +5,6 @@ TK Lee\*, Gio Huh\*, Deon Petrizzo\*
 
 \* All authors contributed equally to this work
 
----
-
 This project involves using two **Emika Franka** robotic arms and a paddle (14 DOF) to imitate a volleyball setting action. The goal is to achieve a reliable and dynamic setting motion, similar to that in volleyball, using **ROS 2 (Humble)**. That is, for any given ball trajectory, it must be able to hit the ball at an angle that results in purely vertical motion, as seen in the following gif.
 
 ![Demo Gif](./assets/gif/dual-arm-ball-setter-gif.gif)
