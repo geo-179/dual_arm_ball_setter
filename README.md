@@ -1,6 +1,5 @@
 # Dual Arm Volleyball Setting Robotics Project
 
-## Authors
 TK Lee\*, Gio Huh\*, Deon Petrizzo\*
 
 \* All authors contributed equally to this work
